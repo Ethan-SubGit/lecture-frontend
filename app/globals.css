@@ -1,0 +1,258 @@
+/* =============================================================================
+   grade-admin — 스타일 토큰 단일 진실 공급원 (Single Source of Truth)
+   -----------------------------------------------------------------------------
+   · 이 파일과 tailwind.config.ts 밖에서 색/크기 리터럴을 쓰지 않는다.
+   · 컴포넌트는 시맨틱 클래스(bg-surface, text-muted, border-subtle ...)만 쓴다.
+   · 다크모드는 아래 토큰 "값 교체"로만 대응한다. 컴포넌트에 dark: 를 뿌리지 않는다.
+   · 색상 값은 "R G B" 공백 구분 채널값이다 (Tailwind alpha 지원: rgb(var(--x) / <alpha-value>)).
+   -----------------------------------------------------------------------------
+   전제: Tailwind CSS v3.4 + PostCSS. (v4로 올릴 경우 @theme 블록으로 옮기되
+   토큰 "이름"은 그대로 유지할 것.)
+   ============================================================================= */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* ---------------------------------------------------------------------------
+     LIGHT (기본)
+     --------------------------------------------------------------------------- */
+  :root {
+    /* -- 배경 계층 ---------------------------------------------------------- */
+    --color-canvas: 244 246 248; /* 페이지 바탕 */
+    --color-surface: 255 255 255; /* 카드/표/패널 */
+    --color-surface-sunken: 237 240 244; /* 표 헤더, 코드블록, 안내 박스 */
+    --color-surface-raised: 255 255 255; /* 드롭다운/모달/토스트 (+shadow) */
+    --color-surface-hover: 242 245 249; /* 행/메뉴 hover */
+    --color-surface-selected: 232 240 254; /* 선택된 행/현재 메뉴 */
+    --color-overlay: 15 18 23; /* 모달 백드롭 (alpha와 함께 사용) */
+    --color-skeleton: 230 234 239;
+
+    /* -- 텍스트 ------------------------------------------------------------- */
+    --color-text-primary: 20 24 31;
+    --color-text-secondary: 72 81 95;
+    --color-text-muted: 107 116 130;
+    --color-text-inverse: 255 255 255;
+
+    /* -- 경계선 ------------------------------------------------------------- */
+    --color-border-subtle: 226 230 235;
+    --color-border-strong: 198 204 212;
+
+    /* -- 강조 / 링크 / 포커스 (info 역할 겸함) ------------------------------ */
+    --color-accent: 29 78 216;
+    --color-accent-hover: 26 68 190;
+    --color-accent-active: 22 56 157;
+    --color-accent-subtle: 232 239 253; /* 연한 배경 */
+    --color-accent-strong: 26 63 174; /* subtle 배경 위 텍스트 */
+    --color-on-accent: 255 255 255;
+    --color-focus: 29 78 216;
+
+    /* -- 성공 --------------------------------------------------------------- */
+    --color-success: 20 108 67;
+    --color-success-hover: 16 88 54;
+    --color-success-subtle: 230 243 236;
+    --color-success-strong: 15 81 50;
+    --color-on-success: 255 255 255;
+
+    /* -- 경고 --------------------------------------------------------------- */
+    --color-warning: 161 92 7;
+    --color-warning-hover: 134 76 5;
+    --color-warning-subtle: 251 241 224;
+    --color-warning-strong: 122 68 5;
+    --color-on-warning: 255 255 255;
+
+    /* -- 위험/실패 ---------------------------------------------------------- */
+    --color-danger: 180 35 24;
+    --color-danger-hover: 145 27 18;
+    --color-danger-subtle: 253 236 234;
+    --color-danger-strong: 145 32 24;
+    --color-on-danger: 255 255 255;
+
+    /* -- 그림자 ------------------------------------------------------------- */
+    --shadow-card: 0 1px 2px 0 rgb(15 18 23 / 0.06), 0 1px 3px 0 rgb(15 18 23 / 0.05);
+    --shadow-raised: 0 4px 12px -2px rgb(15 18 23 / 0.12), 0 2px 4px -2px rgb(15 18 23 / 0.08);
+    --shadow-overlay: 0 16px 40px -8px rgb(15 18 23 / 0.24), 0 4px 12px -4px rgb(15 18 23 / 0.12);
+  }
+
+  /* ---------------------------------------------------------------------------
+     DARK — 값 교체만 한다. 새 토큰 이름을 만들지 않는다.
+     .dark 클래스 또는 OS 설정(.light 명시 시 무시) 두 경로 모두 지원.
+     --------------------------------------------------------------------------- */
+  .dark {
+    --color-canvas: 13 17 23;
+    --color-surface: 22 27 34;
+    --color-surface-sunken: 15 20 26;
+    --color-surface-raised: 28 34 43;
+    --color-surface-hover: 34 42 53;
+    --color-surface-selected: 27 39 64;
+    --color-overlay: 0 0 0;
+    --color-skeleton: 35 43 54;
+
+    --color-text-primary: 231 234 239;
+    --color-text-secondary: 174 183 196;
+    --color-text-muted: 138 148 162;
+    --color-text-inverse: 13 17 23;
+
+    --color-border-subtle: 38 45 56;
+    --color-border-strong: 59 69 82;
+
+    --color-accent: 76 130 240;
+    --color-accent-hover: 107 153 244;
+    --color-accent-active: 61 111 216;
+    --color-accent-subtle: 22 35 59;
+    --color-accent-strong: 169 197 251;
+    --color-on-accent: 13 17 23;
+    --color-focus: 107 153 244;
+
+    --color-success: 59 178 115;
+    --color-success-hover: 92 200 142;
+    --color-success-subtle: 16 37 27;
+    --color-success-strong: 110 220 160;
+    --color-on-success: 13 17 23;
+
+    --color-warning: 224 161 58;
+    --color-warning-hover: 236 180 88;
+    --color-warning-subtle: 42 31 15;
+    --color-warning-strong: 242 199 122;
+    --color-on-warning: 13 17 23;
+
+    --color-danger: 240 104 92;
+    --color-danger-hover: 246 133 122;
+    --color-danger-subtle: 43 22 21;
+    --color-danger-strong: 252 167 157;
+    --color-on-danger: 13 17 23;
+
+    --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.5), 0 1px 3px 0 rgb(0 0 0 / 0.4);
+    --shadow-raised: 0 4px 12px -2px rgb(0 0 0 / 0.6), 0 2px 4px -2px rgb(0 0 0 / 0.45);
+    --shadow-overlay: 0 16px 40px -8px rgb(0 0 0 / 0.7), 0 4px 12px -4px rgb(0 0 0 / 0.5);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not(.light):not(.dark) {
+      --color-canvas: 13 17 23;
+      --color-surface: 22 27 34;
+      --color-surface-sunken: 15 20 26;
+      --color-surface-raised: 28 34 43;
+      --color-surface-hover: 34 42 53;
+      --color-surface-selected: 27 39 64;
+      --color-overlay: 0 0 0;
+      --color-skeleton: 35 43 54;
+
+      --color-text-primary: 231 234 239;
+      --color-text-secondary: 174 183 196;
+      --color-text-muted: 138 148 162;
+      --color-text-inverse: 13 17 23;
+
+      --color-border-subtle: 38 45 56;
+      --color-border-strong: 59 69 82;
+
+      --color-accent: 76 130 240;
+      --color-accent-hover: 107 153 244;
+      --color-accent-active: 61 111 216;
+      --color-accent-subtle: 22 35 59;
+      --color-accent-strong: 169 197 251;
+      --color-on-accent: 13 17 23;
+      --color-focus: 107 153 244;
+
+      --color-success: 59 178 115;
+      --color-success-hover: 92 200 142;
+      --color-success-subtle: 16 37 27;
+      --color-success-strong: 110 220 160;
+      --color-on-success: 13 17 23;
+
+      --color-warning: 224 161 58;
+      --color-warning-hover: 236 180 88;
+      --color-warning-subtle: 42 31 15;
+      --color-warning-strong: 242 199 122;
+      --color-on-warning: 13 17 23;
+
+      --color-danger: 240 104 92;
+      --color-danger-hover: 246 133 122;
+      --color-danger-subtle: 43 22 21;
+      --color-danger-strong: 252 167 157;
+      --color-on-danger: 13 17 23;
+
+      --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.5), 0 1px 3px 0 rgb(0 0 0 / 0.4);
+      --shadow-raised: 0 4px 12px -2px rgb(0 0 0 / 0.6), 0 2px 4px -2px rgb(0 0 0 / 0.45);
+      --shadow-overlay: 0 16px 40px -8px rgb(0 0 0 / 0.7), 0 4px 12px -4px rgb(0 0 0 / 0.5);
+    }
+  }
+
+  /* ---------------------------------------------------------------------------
+     기본 요소
+     --------------------------------------------------------------------------- */
+  html {
+    /* iOS 가로모드 자동 텍스트 확대 방지 */
+    -webkit-text-size-adjust: 100%;
+    /* 대시보드 섹션 앵커(#score-histogram 등) 이동을 부드럽게 한다.
+       페이지 안 이동임을 인지시키기 위한 것이며,
+       prefers-reduced-motion 에서는 파일 하단 블록이 auto 로 되돌린다. */
+    scroll-behavior: smooth;
+  }
+
+  /* 앵커 대상이 sticky 상단바(h-header / h-header-md) 뒤에 숨지 않게 하는 여백.
+     클래스(scroll-mt-16)로도 줄 수 있지만, 대시보드 섹션이 11개라
+     빠뜨리면 조용히 깨지므로 id 를 가진 섹션에 전역으로 건다. */
+  section[id] {
+    scroll-margin-top: theme("height.header-md");
+  }
+
+  body {
+    @apply bg-canvas text-primary text-body antialiased;
+    /* 어떤 화면도 body 레벨 가로 스크롤을 만들지 않는다. */
+    overflow-x: hidden;
+  }
+
+  /* 숫자 정렬(표/지표)용 기본값 */
+  table,
+  output {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 마우스 클릭에는 링을 그리지 않고 키보드 탐색에만 그린다 */
+  :focus-visible {
+    outline: none;
+  }
+}
+
+@layer components {
+  /* 반복되는 3개 조합만 클래스로 승격한다. 그 외 조합은 React 컴포넌트로 승격한다. */
+
+  /* 모든 인터랙티브 요소의 포커스 링 (단일 정의) */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-canvas;
+  }
+
+  /* 표/코드블록 등 넓은 콘텐츠를 가두는 가로 스크롤 컨테이너 */
+  .scroll-x {
+    @apply w-full overflow-x-auto overscroll-x-contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 스켈레톤 블록 */
+  .skeleton {
+    @apply animate-pulse rounded-md bg-skeleton;
+  }
+}
+
+@layer utilities {
+  /* 재조회(검색/정렬/페이지 전환) 중 기존 내용을 유지한 채 흐리는 상태 */
+  .is-refetching {
+    @apply pointer-events-none opacity-60 transition-opacity duration-base ease-standard;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   prefers-reduced-motion — 전역 1회 대응. 컴포넌트에서 개별 처리하지 않는다.
+   ----------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

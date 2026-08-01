@@ -1,0 +1,3486 @@
+# 대학 성적관리 백오피스 (grade-admin) 디자인 명세
+
+> 작성일 2026-07-29 · 개정 2026-08-01 (사이드바 셸 전환 + 대시보드 정보 밀도 보강)
+> · **개정 2026-08-01 ② — 대시보드 확장 분석 8종 추가** (「0.6」, 「1.3」, 「2.2 #3」, 「3.6」, 「4.4 보강」, 「4.15.1 일반화」, **「4.20」~「4.31」**, 「5.1」, 「6.7」, 「7.3」)
+> · 작성자 `ui-ux-designer`
+> 입력 문서: `REQ/grade-admin/spec.md`(2.1 / 3.7 / 3.8 / 4.4 / 5.0 / 5.4 / 5.5 / 6.1 / 7 / 8.1 / 가정 19~31 반영본), `REQ/openapi.json`, `REQ/README.md`
+> 산출물: 이 문서 + `app/globals.css`(토큰 값) + `tailwind.config.ts`(토큰 매핑)
+> 대상 구현자: `frontend-dev`
+>
+> **이 문서도 라운드마다 갱신되는 단일 명세다.** 전면 재작성하지 않고 하위 절을 추가하며, 바뀐 기존 절에는 개정 표기를 남긴다.
+
+---
+
+## 0. 이 문서를 읽는 방법 / 전제
+
+### 0.1 반드시 지킬 3가지
+
+1. **스타일 값은 `app/globals.css`와 `tailwind.config.ts`에만 있다.**
+   컴포넌트에는 `bg-[#fff]`, `text-[14px]`, `w-[320px]`, `blue-500` 같은 값이 **하나도** 없어야 한다.
+   새 값이 필요하면 → 토큰을 먼저 추가하고 이 문서 「3. 사용 토큰」에 한 줄 추가한다.
+2. **모바일 퍼스트.** 베이스 = 모바일. `sm:`/`md:`/`lg:`로만 넓힌다. `max-*:` 역방향 접두어를 쓰지 않는다.
+3. **다크모드에 `dark:` 접두어를 쓰지 않는다.** 토큰 값 교체로 이미 처리되어 있다.
+   (예외 없음. `dark:`가 컴포넌트에 등장하면 그건 토큰이 부족하다는 신호다.)
+
+### 0.2 스캐폴딩 주의
+
+`app/globals.css`와 `tailwind.config.ts`는 **이 문서와 함께 이미 작성해 두었다.**
+`create-next-app`이 두 파일을 덮어쓰므로, 스캐폴딩 후 **반드시 이 두 파일을 원상 복구**할 것.
+Tailwind는 **v3.4** 전제다(설정 파일이 `tailwind.config.ts`이므로). v4로 올린다면 `@theme`로 옮기되 **토큰 이름은 그대로** 유지한다.
+
+### 0.3 폰트
+
+`Pretendard`를 CDN(`pretendard-dynamic-subset`) 또는 `next/font/local`로 로드한다. 실패해도 `font-sans` 폴백 체인이 한글을 커버한다.
+
+### 0.4 제약된 스케일
+
+`fontSize` / `borderRadius` / `zIndex`는 Tailwind 기본값을 **교체**했다. 따라서 `text-sm`, `rounded-3xl`, `z-50` 같은 클래스는 **존재하지 않는다.** 빌드에서 클래스가 안 먹으면 스케일 밖 값을 쓴 것이다.
+
+**타이포 사용 규칙**
+
+| 토큰 | px | 사용처 | 제약 |
+|---|---|---|---|
+| `text-micro` | 12 | 배지 내부 보조 텍스트, 표 캡션 | **`md:` 접두어와 함께만** |
+| `text-caption` | 14 | 폼 라벨, 메타(등록일 등), 배지, 헬프 텍스트 | 전 구간 허용 (본문 아님) |
+| `text-body-sm` | 14 | 표 셀 밀도 축소 | **`md:` 접두어와 함께만** |
+| `text-body` | 16 | 기본 본문, **모든 `input`/`select`/`textarea`** | 모바일 본문 하한. iOS 자동 확대 방지 |
+| `text-section` | 18 | 카드·섹션 제목 | |
+| `text-title` | 20 | 페이지 제목(모바일)·모달 제목 | |
+| `text-display` / `lg:text-display-lg` | 24 / 30 | 페이지 제목 | |
+| `text-metric` / `lg:text-metric-lg` | 28 / 36 | KPI 숫자 | |
+
+### 0.5 2026-08-01 개정 요약 — 레퍼런스에서 무엇을 가져왔고 무엇을 안 가져왔나
+
+"화면이 규칙은 지키지만 단조롭다"는 피드백에 따라 [Tailwind Admin 무료 대시보드 템플릿](https://github.com/Tailwind-Admin/free-tailwind-admin-dashboard-template)을 **구성 패턴 레퍼런스**로 삼았다.
+
+**차용한 것 (구성 패턴만)**
+
+| 레퍼런스 요소 | 이 프로젝트에서의 재해석 | 반영 위치 |
+|---|---|---|
+| 사이드바 + 상단바 2영역 셸 | `Sidebar`(`w-sidebar`, `bg-surface` + `border-r`) + `TopBar`(`h-header-md`, `bg-surface` + `border-b`) | 1.1, 4.2 |
+| 통계 카드의 정보 밀도(아이콘 슬롯 + 배지 + 보조 텍스트) | 아이콘 슬롯 + 시맨틱 톤 3종 + hint 1줄 + (해당 카드만) 만점 대비 막대. **증감 배지는 데이터가 없어 제외** | 4.14 |
+| 그림자·radius로 만드는 카드 계층감 | `shadow-card` / `shadow-raised` **2단 계층 + 화면당 raised 최대 2개** 규칙 명문화 | 4.4 |
+| 리스트 안의 상태 배지·아바타 칩 | 기존 `GradeBadge`(성적 표) + 상단바·드로어 **이니셜 아바타 칩** + 등급분포 헤더 요약 배지 | 4.8, 4.2.3, 4.15 |
+| 빈 상태의 아이콘/일러스트 자리 | `EmptyState.icon`을 **필수 prop으로 승격** + 원형 아이콘 슬롯 규격 지정(`tone: neutral \| danger`) | 4.12, 4.15 |
+| 같은 지표를 **두 가지 표현으로** 보여주는 카드 분할 | 등급분포 카드를 **차트(형태) + 막대 리스트(수치) 2분할**로 재구성 | 4.15 〔2026-08-01 2분할 개정〕 |
+| **막대 + 라인 콤보 차트** (레퍼런스의 ApexCharts 콤보 위젯) | 세로 막대(인원수) 위에 꺾은선(비율)을 **같은 x축**으로 겹친 `GradeComboChart`. 단 **ApexCharts를 쓰지 않고 순수 SVG**(`<rect>` + `<polyline>` + `<circle>`)로 그리고, 막대 색은 기존 `fill-success/accent/warning/danger`, 선·그리드는 새 stroke 토큰 2개 | 4.15.2 〔2026-08-01 콤보 개정〕 |
+
+**차용하지 않은 것**
+
+- 레퍼런스의 **색상값·폰트·아이콘 세트를 한 개도 가져오지 않았다.** 색은 전부 기존 시맨틱 토큰(`bg-surface`, `text-accent-strong`, `shadow-card` …), 폰트는 그대로 `Pretendard`, 아이콘은 자체 인라인 SVG다.
+- 상단바의 검색·알림·다크모드 토글·언어 선택: **해당 기능이 스펙에 없다.** 동작하지 않는 껍데기 아이콘을 두지 않는다.
+- **시계열 라인 차트**(월별 추이 등)·지도 위젯: `DashboardSummaryDto`에 **시계열·좌표 데이터 자체가 없다.** 없는 데이터를 그리지 않는다.
+  〔2026-08-01 콤보 개정〕 등급분포에 들어간 꺾은선은 **시계열이 아니다.** x축은 시간이 아니라 **등급**이고, 선이 잇는 값은 각 등급의 **비율(%)** 이다(4.15.2 가정 참고).
+- 차트 **라이브러리**(recharts/chart.js/ApexCharts 등): 도입하지 않는다. 〔2026-08-01 콤보 개정〕 등급분포 콤보 차트는 **자체 인라인 SVG**(`<rect>` + `<polyline>` + `<circle>`)로 그린다 — 아이콘을 라이브러리 없이 만든 것과 같은 원칙이고, 색도 전부 토큰이라 다크모드가 공짜로 따라온다. 4.15.2 참고.
+- 프로모/업그레이드 배너: 사내 백오피스에 팔 것이 없다.
+
+**단조로움 방지 체크리스트 검토 결과**
+
+| 항목 | 결과 |
+|---|---|
+| 통계 카드가 숫자만 나열하지 않는가 | ✔ 아이콘 슬롯·톤·hint·진행 막대 추가. **증감 배지만 생략** — `DashboardSummaryDto`에 과거 값이 없어 지어낼 수밖에 없기 때문(사유는 4.14 상단에 명시) |
+| 카드 계층이 그림자로 구분되는가 | ✔ 4.4에 4단 계층표 신설, 대시보드에 적용 |
+| 리스트/표에 시각 태그가 1곳 이상 있는가 | ✔ `GradeBadge`(성적 표·등급분포), 이니셜 아바타(상단바·드로어), 등급분포 헤더 배지 |
+| 빈 상태·에러에 아이콘 자리가 있는가 | ✔ `EmptyState.icon` 필수화 + `DistributionBar` 빈 상태에 아이콘·설명·액션 3종 지정 |
+
+### 0.6 2026-08-01 개정 ② 요약 — 대시보드 확장 분석 8종
+
+spec.md 「2.1 / 3.7 / 4.4 / 5.0 / 6.1」에 따라 `/dashboard` 한 페이지에 **섹션 8개가 추가**된다.
+기존 KPI 5장 + 등급분포 + 통계 3블록은 **그대로 유지**되므로 화면은 **총 11개 섹션의 긴 문서**가 된다.
+
+#### 이번 개정에서 확정한 5가지 (뒤집지 말 것)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| 1 | **필터 컨트롤을 화면에 두지 않는다.** 8개 섹션 모두 "전체 기간·전체 학과·전체 강의 기준"이며, 그 사실을 **섹션마다 1줄씩 명시**한다 | spec 2.1. 조건 없이 본 숫자를 조건 있는 숫자로 오해하는 것이 이 화면의 최대 위험이다 |
+| 2 | **섹션 = 상태의 단위.** 로딩 스켈레톤 / 에러 + [다시 시도] / 빈 상태를 섹션 껍데기(`DashboardSection`, 4.20) **한 곳에서** 판정한다 | spec 6.1. `GradeDistributionPanel`이 이미 쓰는 "패널이 빈/로딩을 단일 판정" 패턴을 8개로 확장한 것뿐이다 |
+| 3 | **11개 섹션을 5개 그룹으로 묶고, 그룹 제목 + 구분선 + 앵커 목차로 리듬을 만든다** (1.3) | 탭·아코디언은 상태와 딥링크 규칙을 새로 만들어야 한다(spec 가정 20). 그룹 헤딩은 상태가 없다 |
+| 4 | **차트 라이브러리는 여전히 도입하지 않는다.** 신규 차트 2종(`ScoreHistogramChart` 4.22.1, `TermTrendChart` 4.27.1)은 `GradeComboChart`의 좌표계·토큰·`aria` 규약을 **글자 그대로 승계**한다 | 세 번째 차트를 다른 문법으로 그리면 "차트마다 다른 물건"이 된다 |
+| 5 | **새 색상 토큰을 만들지 않는다.** 편차 ±, 인플레이션·난이도 라벨, 위험 사유는 기존 `accent/success/warning/danger`의 `-subtle`/`-strong` 슬롯과 `Badge` 톤 5종만으로 표현한다 | 새 의미마다 색을 늘리면 톤 체계가 무너진다. 늘린 것은 **치수 토큰 3개뿐**(3.6) |
+
+#### 레퍼런스(Tailwind Admin)에서 이번 라운드에 추가로 차용한 구성 패턴
+
+| 레퍼런스 요소 | 이 프로젝트에서의 재해석 | 반영 위치 |
+|---|---|---|
+| 사이드바+상단바 셸 | **이미 1.1에서 도입 완료.** 이번 라운드에 바뀌는 것이 없다(새 라우트·새 메뉴 없음) | 1.1, 4.2 |
+| 위젯 상단의 소형 지표 스트립 | `SectionStatStrip` — 아이콘 슬롯 + 값 + 라벨 칩 2~4개. **전부 응답 필드에서 계산되는 실제 값**이며 지어낸 수치가 아니다 | 4.21.1, 8개 섹션 전부 |
+| 테이블 안의 상태 배지 / 우선순위 태그 | `gradeInflation` → `warning` 배지, `difficultyOutlier` → `accent` 배지 + 방향 글리프, `riskReasons` → `danger` 배지 나열 | 4.24, 4.29 |
+| 테이블 안의 아바타 칩 | 랭킹·위험군의 **이니셜 아바타 칩**(이름 첫 글자). 사진이 없는 도메인이라 원형 이니셜로 대체 | 4.28, 4.29 |
+| 순위 뱃지(1·2·3위 강조) | 랭킹 표의 `RankBadge` — 1위 `success` / 2·3위 `accent` / 그 외 `neutral`, **숫자가 항상 1차 단서** | 4.28.1 |
+| 프로모/일러스트 영역 | **차용하지 않았다.** 대신 그 자리를 **빈 상태 아이콘 슬롯**이 가져간다. 특히 위험군 0명은 "좋은 소식"이므로 `success` 톤 아이콘 슬롯을 쓴다 | 4.29 |
+| 콤보(막대+라인) 위젯 | 히스토그램 = 막대(구간 인원) + **누적 비율** 라인 / 학기별 추이 = 막대(건수) + **평균점수** 라인. 두 계열의 스케일이 다르다는 사실을 매번 문자로 밝힌다 | 4.22.1, 4.27.1 |
+
+#### 단조로움 방지 체크리스트 (이번 라운드 재검토)
+
+| 항목 | 결과 |
+|---|---|
+| 통계/요약 카드가 숫자만 나열하지 않는가 | ✔ 8개 섹션 전부 `SectionStatStrip`(아이콘 + 값 + 라벨)을 상단에 둔다. **증감 배지는 학기별 추이 1곳에서만** 쓴다 — 시계열이 있는 유일한 섹션이라 직전 학기 대비 증감이 **실제로 계산 가능**하기 때문이다(4.27.2). 나머지 섹션은 4.14와 같은 이유로 증감을 만들지 않는다 |
+| 카드 계층이 그림자로 구분되는가 | ✔ 4.4 "화면당 raised 최대 2개" 규칙을 지키기 위해 **raised는 그룹 A에만**(KPI primary 1장 + 등급분포 1장) 둔다. 나머지 9개 섹션은 `shadow-card`. 대신 **그룹 제목 + 구분선 + 그룹 도입문 + 섹션 아이콘**이 세로 리듬을 만든다(1.3) |
+| 리스트/표에 시각 태그가 1곳 이상 있는가 | ✔ 순위 배지·이니셜 아바타(랭킹) / F학점 배지·위험 사유 배지·이니셜 아바타(위험군) / 인플레이션·난이도 배지(강의 난이도) / `GradeBadge`(학과×등급 교차표 열 머리) / 편차 글리프(교차표·난이도) |
+| 빈 상태·에러에 아이콘/일러스트 자리가 있는가 | ✔ `DashboardSection`이 빈 상태·에러 아이콘 슬롯을 **강제**한다(4.20). 섹션마다 아이콘이 다르고, 위험군 0명만 `success` 톤이다 |
+
+#### 이번 라운드에 **의도적으로 넣지 않은 것**과 사유
+
+- **히트맵(셀 배경 농담)으로 편차 표현** — 교차표 셀에 색 농담을 깔면 (a) 새 틴트 색 스케일이 필요하고 (b) **색만으로 크기를 전달**하게 되며 (c) 다크모드에서 대비를 다시 잡아야 한다. 대신 **방향 글리프(▲▼=) + 부호 + 숫자**로 표현한다(4.21.2).
+- **섹션 접기/펼치기, 섹션 순서 커스터마이즈** — spec 2절 Out of scope(상태 저장 위치가 미정).
+- **차트 툴팁·호버 하이라이트** — 신규 차트 2종 모두 **정확한 값을 옆/아래 표와 목록이 전부 텍스트로** 보여주므로 툴팁이 필요 없다. 터치 기기에서 툴팁은 접근 수단이 애매해지기도 한다.
+- **KPI 카드에 확장 분석 지표 추가** — KPI 5장은 `summary` 전용이다. 여기에 다른 엔드포인트 값을 섞으면 "이 5장이 어느 응답인지"가 흐려지고, 섹션 단위 실패 격리(spec 6.1)도 깨진다.
+
+---
+
+## 1. 화면 구조
+
+### 1.1 앱 셸 (전 인증 화면 공통) — **좌측 사이드바 + 상단바** 〔2026-08-01 전면 개정〕
+
+> **개정 배경.** spec.md 「4.2 사이드바 / 메뉴 구조」가 상단 가로 GNB + 드롭다운에서
+> **좌측 사이드바 + 상단바 2영역 셸**로 확정되었다(결정 A~F). 아래 명세는 그 결정을 시각화한 것이며,
+> 이전 판의 `AppHeader`(가로 메뉴 + 드롭다운) 명세는 **폐기**한다.
+> 참조 템플릿(Tailwind Admin)에서 가져온 것은 **"셸의 골격"뿐**이고, 색·그림자·타이포는 전부 이 문서의 기존 토큰으로 재해석했다.
+
+```
+데스크탑 (≥1024)  — 사이드바 상시 노출, 접기(collapse) 없음
+┌──────────────────────┬────────────────────────────────────────────────────────┐
+│ 🎓 성적관리          │ (TopBar)  sticky top-0 · h-header-md   홍길동 [로그아웃] │
+│  학사 백오피스        ├────────────────────────────────────────────────────────┤
+│ ──────────────────── │                                                        │
+│  ▸ 대시보드          │   ┌──────────── max-w-content (px-8) ───────────────┐   │
+│                      │   │ 수강과목 관리                 [ + 수강과목 생성 ] │   │
+│  수강과목 관리     ⌄ │   │ 등록된 강의를 조회·수정·삭제합니다.               │   │
+│  │▍목록             │   │ ───────────────────────────────────────────────  │   │
+│  │  생성             │   │ <필터/검색 바>                                   │   │
+│                      │   │ <본문: 표 / 카드 / 폼>                           │   │
+│  성적관리          ⌄ │   │ <페이지네이션>                                   │   │
+│  │  성적입력         │   └──────────────────────────────────────────────────┘   │
+│  │  수강과목별 성적조회│                                                        │
+│                      │                                          ┌────────────┐ │
+│  기준정보 관리     ⌄ │                                          │ 토스트 스택 │ │
+│  │  학과 관리        │                                          └────────────┘ │
+│  │  학점환산기준 관리 │                                                        │
+│ ──────────────────── │                                                        │
+│  v1.0                │                                                        │
+└──────────────────────┴────────────────────────────────────────────────────────┘
+  w-sidebar (17rem)       lg:pl-sidebar 로 밀린 메인 컬럼
+  fixed inset-y-0 left-0
+  bg-surface + border-r     bg-canvas
+
+태블릿 세로 / 모바일 (<1024)  — 사이드바는 드로어로만 존재
+┌──────────────────────────────┐
+│ [☰] 성적관리           [홍]  │ TopBar · h-header · sticky top-0
+└──────────────────────────────┘
+│ 수강과목 관리                │
+│ 등록된 강의를 조회…          │
+│ [ + 수강과목 생성 ] (w-full) │
+│ ────────────────────────────  │
+│ <검색 인풋 w-full>           │
+│ ┌──────────────────────────┐ │  ← 표가 아니라 "행 카드" 스택
+│ │ LEC-0001         [⋯]     │ │
+│ │ 자료구조                 │ │
+│ │ 학기 2610 · 26.03.02     │ │
+│ └──────────────────────────┘ │
+│ [‹] 1 / 4 [›]                │
+└──────────────────────────────┘
+
+  ☰ 탭 → 드로어(좌측에서 슬라이드인) = 데스크탑 사이드바와 "완전히 동일한 계층"
+  ┌───────────────────────┬──────┐
+  │ 🎓 성적관리      [✕] │ 딤   │  패널 w-drawer, z-drawer
+  │ ───────────────────── │      │  백드롭 bg-overlay/50, z-overlay
+  │  ▸ 대시보드           │      │
+  │  수강과목 관리      ⌄ │      │
+  │  │▍목록              │      │
+  │  │  생성              │      │
+  │  … (동일)             │      │
+  │ ───────────────────── │      │
+  │ [홍] 홍길동           │      │  ← 계정 섹션(모바일 전용)
+  │      admin            │      │
+  │ [    로그아웃    ]    │      │
+  └───────────────────────┴──────┘
+```
+
+#### 셸 컴포넌트 트리
+
+```
+<AppShell>                       ← app/(auth)/layout.tsx 에서 사용
+  ├ <Sidebar/>                   hidden lg:flex   (데스크탑 상시 노출)
+  ├ <MobileNavDrawer/>           lg:hidden        (<1024 전용, 같은 NAV_ITEMS 소비)
+  └ <div class="lg:pl-sidebar">  ← 메인 컬럼(사이드바 폭만큼 밀림)
+      ├ <TopBar/>                sticky top-0
+      ├ <main id="main-content"> 페이지 콘텐츠
+      └ <ToastViewport/>
+```
+
+- **루트**: `<div class="min-h-screen bg-canvas">`
+- **사이드바 오프셋**: 사이드바가 `fixed`이므로 메인 컬럼은 `lg:pl-sidebar` **하나로만** 밀린다.
+  `ml-` 대신 `pl-`을 쓰는 이유 — `TopBar`가 `sticky`이고 메인 컬럼이 full-bleed 배경(`bg-canvas`)을 그대로 이어받아야 하기 때문이다.
+- **`main` 컨테이너 클래스(전 인증 화면 동일)**:
+  `mx-auto w-full max-w-content px-4 sm:px-6 lg:px-8 py-6 lg:py-8`
+  - **예외**: `/dashboard`, `/scores`는 `max-w-wide` (KPI 5열 / 10열 표를 위해).
+  - **예외**: 폼·상세 화면은 위 컨테이너 안에서 다시 `max-w-form` / `max-w-detail`로 좁힌다.
+  - ⚠️ **`max-w-*`의 기준점이 바뀌었다.** 이제 뷰포트가 아니라 **사이드바를 뺀 메인 컬럼** 안에서 중앙 정렬된다.
+    1920px 화면에서 실제 콘텐츠 폭 = `min(max-w-content, 1920 − 272 − 2×32)`. `lg:px-8`은 그대로 유지한다.
+  - ⚠️ **가로 스크롤 재점검 포인트.** `w-screen`·`100vw` 계열을 어디에도 쓰지 않는다(사이드바 폭만큼 넘친다).
+    폭이 필요하면 언제나 `w-full`(부모 기준)을 쓴다.
+- 세로 리듬: 페이지 헤더 → 본문 간격 `mt-6`, 본문 블록 간 `space-y-6 lg:space-y-8`.
+- `/login`, `/`(리다이렉터)에는 `AppShell`을 렌더하지 않는다.
+
+### 1.2 표 반응형 전략 — **전 화면 단일 규칙 (중요)**
+
+이 도메인은 표가 8곳에 나온다. 전략을 하나만 쓴다.
+
+| 모드 | 동작 | 적용 대상 |
+|---|---|---|
+| **`stack`** (기본) | `<md`: 표 대신 **행 카드 스택**(`<ul>` + 정의목록). `≥md`: 진짜 `<table>`을 `.scroll-x` 컨테이너 안에 렌더 | `/lectures`, `/scores`, `/departments`, `/grade-scales`, 대시보드 통계 3블록 |
+| **`scroll`** | 전 구간 `<table>`. 항상 `.scroll-x` 컨테이너 안 | 업로드 실패행 표(2열), 대시보드 등급분포 리스트 |
+
+원칙:
+- **모바일에서 컬럼을 숨기지 않는다.** 카드 스택은 모든 필드를 `라벨: 값` 쌍으로 전부 보여준다. 정보 손실 0.
+- 가로 스크롤은 **`.scroll-x` 안에서만** 발생한다. `body`에는 `overflow-x: hidden`이 걸려 있고, 페이지 본문이 밀리는 일이 없어야 한다.
+- `≥md`에서 표가 컨테이너보다 넓을 수 있으므로 `<table>`에 `min-w-table-sm|md|lg`를 반드시 준다. (없으면 셀이 뭉개진다.)
+- 카드 스택과 표는 **같은 데이터 배열 · 같은 컬럼 정의**를 소비한다. 컬럼 정의(`columns[]`)를 한 벌만 만들고 두 렌더러가 나눠 쓴다.
+
+### 1.3 `/dashboard` 문서 구조 — 11개 섹션 · 5개 그룹 〔2026-08-01 개정 ② 신설〕
+
+> 사이드바+상단바 셸(1.1)은 그대로다. **바뀌는 것은 `/dashboard` 메인 영역의 내부 구조뿐**이며 새 라우트·새 메뉴는 없다.
+
+#### 1.3.1 그룹 편성 (spec 4.4 순서를 유지하되 5개 그룹으로 묶는다)
+
+11개 섹션이 아무 표식 없이 이어지면 "끝없는 카드 더미"가 된다. **그룹 = 관점이 바뀌는 지점**으로 끊는다.
+
+| 그룹 | 앵커 | 그룹 제목 | 그룹 도입문(`text-caption text-muted`) | 포함 섹션 (순서 = DOM 순서) |
+|---|---|---|---|---|
+| **A** | `#group-overview` | 전체 현황 | 전체 성적을 하나의 모집단으로 보고 규모와 분포를 확인합니다. | ① 요약 지표 5장 · ② 등급 분포 · ③ 점수 구간 분포 |
+| **B** | `#group-breakdown` | 분해 분석 — 어디에서 차이가 나는가 | 전체를 학과·강의로 쪼개 평균이 어디서 갈라지는지 봅니다. | ④ 학과별 학업성취도 · ⑤ 강의별 난이도·성적편차 · ⑥ 학과 × 강의 교차표 |
+| **C** | `#group-composition` | 구성과 추이 | 점수의 내부 구성(시험/과제)과 학기에 따른 변화를 봅니다. | ⑦ 평가항목별 분석 · ⑧ 학기별 추이 |
+| **D** | `#group-students` | 학생 단위 | 집계에서 개인으로 내려갑니다. **학번·이름이 노출되는 구간입니다.** | ⑨ 학생 종합 성적 랭킹 · ⑩ 학사경고 위험군 학생 |
+| **E** | `#group-summary` | 요약 통계 (간단 보기) | 위 상세 분석과 **같은 데이터의 축약본**입니다. 인원수와 평균만 봅니다. | ⑪ 학과별 / 학기별 / 강의별 요약 3블록 |
+
+**그룹 A·B의 순서 근거**는 spec 4.4 표와 동일하다(전체 → 학과 → 강의 → 학과×강의). 그룹 E를 맨 아래에 둔 것은 spec 4.4 주석("기존 3블록은 정보가 새 8종에 포섭되므로 하단으로 내려 요약 성격을 드러낸다")을 따른 것이다.
+
+**그룹 B/E 중복 오인 방지 — 제목·도입문으로 위계를 만든다 (spec 가정 30 대응).**
+같은 지표가 두 군데 나오는 것이 이 화면의 가장 큰 혼란 요인이다. 아래 규칙을 **문구 그대로** 쓴다.
+
+| | 그룹 B·C (신규) | 그룹 E (기존 `summary`) |
+|---|---|---|
+| 제목 | 「학과별 학업성취도」 / 「강의별 난이도·성적편차」 / 「학기별 추이」 | 「학과별 요약」 / 「강의별 요약」 / 「학기별 요약」 |
+| 제목 옆 배지 | `Badge tone="accent"` **상세** | `Badge tone="neutral"` **요약** |
+| 도입/설명문 | 중앙값·표준편차·A/F 비율·편차까지 포함한 **전체 지표**입니다. | 인원수와 평균만 담은 간단 표입니다. 자세한 값은 위 「학과별 학업성취도」를 보세요. |
+
+> 그룹 E의 각 카드 설명문에는 **대응하는 상세 섹션의 앵커 링크**(`Button variant="link" size="sm"` → `#department-achievement` 등)를 둔다. "왜 두 개가 있지?"라는 질문이 화면 안에서 해소되어야 한다.
+
+#### 1.3.2 그룹 헤딩 · 구분선 마크업
+
+```html
+<!-- 그룹 1개 = <section aria-labelledby>. 그룹 안의 섹션 카드는 h3 를 쓴다 -->
+<section id="group-breakdown" aria-labelledby="group-breakdown-title" class="space-y-4 lg:space-y-6">
+  <header class="flex flex-col gap-1">
+    <div class="flex items-center gap-3">
+      <h2 id="group-breakdown-title" class="text-title font-semibold text-primary">분해 분석 — 어디에서 차이가 나는가</h2>
+      <!-- 구분선: 제목 오른쪽 여백을 채워 "여기서 관점이 바뀐다"를 시각화한다 -->
+      <span aria-hidden="true" class="h-0 min-w-0 flex-1 border-t border-subtle"></span>
+    </div>
+    <p class="text-caption text-muted">전체를 학과·강의로 쪼개 평균이 어디서 갈라지는지 봅니다.</p>
+  </header>
+  <!-- 섹션 카드들 -->
+</section>
+```
+
+- 제목 계층: 페이지 `<h1>`(PageHeader) → **그룹 `<h2>`** → **섹션 카드 `<h3>`**(`CardHeader as="h3"`) → 카드 내부 소제목 `<h4>`.
+  ⚠️ **기존 등급분포 카드와 통계 3블록의 `CardHeader`도 `as="h3"`으로 내려야 한다.** 그러지 않으면 h2가 그룹 제목과 섞여 문서 개요가 깨진다.
+- 그룹 간 간격 `space-y-8 lg:space-y-10`, 그룹 안 섹션 간 간격 `space-y-4 lg:space-y-6`.
+  → **그룹 사이가 섹션 사이보다 확실히 넓다**는 것이 유일한 시각적 계층 장치다(그림자를 더 못 쓰므로).
+
+#### 1.3.3 `SectionNav` — 그룹 앵커 목차
+
+- 페이지 헤더 바로 아래, 첫 그룹 위. **11개 전부가 아니라 그룹 5개만** 링크한다(모바일에서 2줄을 넘기지 않기 위함).
+- `totalStudentScores === 0`이면 그룹 B~D가 렌더되지 않으므로 `SectionNav`도 렌더하지 않는다.
+
+```html
+<nav aria-label="대시보드 섹션 바로가기"
+     class="rounded-lg border border-subtle bg-surface p-3 shadow-card md:p-4">
+  <ul class="flex flex-wrap gap-2">
+    <li>
+      <a href="#group-overview"
+         class="inline-flex min-h-touch items-center gap-2 rounded-full border border-subtle bg-surface-sunken px-3
+                text-caption font-medium text-secondary transition-colors duration-fast ease-standard
+                hover:bg-surface-hover hover:text-primary focus-ring md:min-h-0 md:h-control-dense">
+        <ChartIcon class="h-4 w-4 shrink-0 text-muted" aria-hidden="true"/>
+        전체 현황
+      </a>
+    </li>
+    …
+  </ul>
+</nav>
+```
+
+- **sticky 로 만들지 않는다.** 상단바가 이미 sticky이고, 목차까지 붙으면 모바일 뷰포트의 25%를 chrome이 먹는다.
+- 앵커 이동 시 sticky 상단바에 제목이 가리지 않도록 `globals.css`에서 `section[id] { scroll-margin-top: theme("height.header-md") }`를 전역으로 건다(3.6 참고). 클래스로 11곳에 붙이면 반드시 하나를 빠뜨린다.
+
+#### 1.3.4 와이어프레임
+
+```
+데스크탑 (≥1024) — 메인 컬럼(max-w-wide) 안
+┌───────────────────────────────────────────────────────────────────────────┐
+│ 대시보드                                                    (h1)          │
+│ 등록 현황과 성적 통계를 한눈에 확인합니다.                                │
+│ ┌ SectionNav ─────────────────────────────────────────────────────────┐   │
+│ │ (전체 현황) (분해 분석) (구성과 추이) (학생 단위) (요약 통계)        │   │
+│ └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                           │
+│ 전체 현황 ──────────────────────────────────────────────────  (h2 + rule) │
+│ 전체 성적을 하나의 모집단으로 보고 규모와 분포를 확인합니다.              │
+│ [KPI][KPI][KPI★raised][KPI][KPI]                     xl:5열 / lg:3열      │
+│ ┌ 등급 분포                          ★shadow-raised ─────────────────┐    │
+│ │ 콤보 차트            │ 등급별 막대 리스트                          │    │
+│ └───────────────────────────────────────────────────────────────────┘    │
+│ ┌ 점수 구간 분포                            shadow-card ─────────────┐    │
+│ │ [스트립: 총 N건 · 구간 10점 · 최다 70~79]                          │    │
+│ │ 히스토그램(막대+누적선)  │ 구간별 막대 리스트                      │    │
+│ └───────────────────────────────────────────────────────────────────┘    │
+│                                                                           │
+│ 분해 분석 — 어디에서 차이가 나는가 ─────────────────────────  (h2 + rule) │
+│ ┌ 학과별 학업성취도 [상세] ──────────────────────────────────────────┐    │
+│ │ [스트립 4칩] / 지표 표(9열) / 학과×등급 교차표(sticky 1열) / 각주   │    │
+│ └───────────────────────────────────────────────────────────────────┘    │
+│ ┌ 강의별 난이도·성적편차 [상세] ─────────────────────────────────────┐    │
+│ ┌ 학과 × 강의 교차표 ───────────────────────────────────────────────┐    │
+│                                                                           │
+│ 구성과 추이 ────────────────────────────────────────────────  (h2 + rule) │
+│ ┌ 평가항목별 분석 ──────────────────────────────────────────────────┐    │
+│ ┌ 학기별 추이 [상세] ───────────────────────────────────────────────┐    │
+│                                                                           │
+│ 학생 단위 ──────────────────────────────────────────────────  (h2 + rule) │
+│ ┌ 학생 종합 성적 랭킹 ──────────────────────────────────────────────┐    │
+│ ┌ 학사경고 위험군 학생 ─────────────────────────────────────────────┐    │
+│                                                                           │
+│ 요약 통계 (간단 보기) ──────────────────────────────────────  (h2 + rule) │
+│ [학과별 요약][학기별 요약][강의별 요약]            lg:3열                 │
+└───────────────────────────────────────────────────────────────────────────┘
+
+모바일 (<640) — 전 섹션 1열 스택. 순서·정보 손실 없음
+┌──────────────────────────┐
+│ 대시보드                 │
+│ ┌ SectionNav (칩 2줄) ─┐ │
+│ 전체 현황 ─────────────  │
+│ [KPI] × 5 (세로)         │
+│ ┌ 등급 분포 ───────────┐ │  차트 위 / 리스트 아래
+│ ┌ 점수 구간 분포 ──────┐ │  차트 위 / 리스트 아래
+│ 분해 분석 ─────────────  │
+│ ┌ 학과별 학업성취도 ───┐ │  표 → **행 카드 스택**
+│ │ [스트립 1열]          │ │
+│ │ ┌ 컴퓨터공학과 ─────┐│ │
+│ │ │ 인원 32명          ││ │
+│ │ │ 평균 78.3점        ││ │
+│ │ │ 중앙값 79.0점      ││ │
+│ │ │ 표준편차 —         ││ │
+│ │ │ …(전 지표 노출)    ││ │
+│ │ └───────────────────┘│ │
+│ │ 학과×등급 교차표      │ │  ← 표 컨테이너 안에서만 가로 스크롤
+│ └──────────────────────┘ │
+│ …                        │
+└──────────────────────────┘
+```
+
+---
+
+## 2. 브레이크포인트별 레이아웃 (15개 화면 전부)
+
+공통 컨테이너: 모바일 `px-4` / `sm:px-6` / `lg:px-8`, 최대폭은 아래 표의 지정을 따른다.
+
+### 2.1 전역 요소
+
+| 영역 | 모바일 (<640) | 태블릿 (≥768) | 데스크탑 (≥1024) |
+|---|---|---|---|
+| **사이드바** | 렌더 안 함(`hidden`). 계층은 드로어가 그대로 담당 | **여전히 렌더 안 함** — 드로어 기준선이 `md`가 아니라 **`lg`(1024)** 다. 태블릿 세로에서는 콘텐츠 폭을 우선한다 | `lg:flex`. `fixed inset-y-0 left-0 w-sidebar`, 항상 펼침. **접기(collapse) 없음** |
+| **상단바(TopBar)** | `h-header`. 좌: 햄버거(44×44) + 서비스명, 우: 사용자 이니셜 아바타(탭 시 드로어의 계정 섹션으로 이동) | `md:h-header-md`. 구성 동일(햄버거 유지). 아바타 옆에 이름 `md:inline` | 햄버거 `lg:hidden`으로 사라짐. 좌측은 현재 위치 breadcrumb, 우측은 사용자 **이름 전체** + [로그아웃] 텍스트 버튼. **이동 링크 없음** |
+| **내비 드로어** | `w-drawer max-w-full`, **좌측** 슬라이드인, 사이드바와 동일한 아코디언 계층 + 하단 계정 섹션 | 동일(`<lg` 이므로 계속 사용) | `lg:hidden` — 렌더 자체를 하지 않음 |
+| 메인 컬럼 | 오프셋 없음 | 오프셋 없음 | `lg:pl-sidebar` |
+| 페이지 헤더 | 제목/설명/액션 **세로 스택**, 액션 버튼 `w-full` | `md:flex md:items-end md:justify-between`, 액션 `md:w-auto` | 동일 (제목 `lg:text-display-lg`) |
+| 필터/검색 바 | 필드 1열 `grid grid-cols-1 gap-3`, 각 `w-full` | `md:grid-cols-2` | `lg:grid-cols-4`, [검색]/[초기화]는 마지막 셀에 `flex gap-2` |
+| 토스트 | 하단 고정 `inset-x-0 bottom-0 p-4` + `pb-[env(safe-area-inset-bottom)]` 대체로 `pb-6` | `md:` 우상단 `md:right-4 md:top-4 md:bottom-auto md:left-auto md:w-toast` | 동일 |
+| 모달 | 바텀시트: `items-end`, `rounded-t-2xl`, `w-full` | `md:items-center`, `md:max-w-modal`, `md:rounded-xl` | 동일 |
+| 푸터 | 없음 | 없음 | 없음 |
+
+### 2.2 화면별
+
+| # | 라우트 | 영역 | 모바일 (<640) | 태블릿 (≥768) | 데스크탑 (≥1024) |
+|---|---|---|---|---|---|
+| 1 | `/` | 리다이렉터 | 전체화면 스피너 + "이동 중…" (`min-h-screen grid place-items-center`) | 동일 | 동일 |
+| 2 | `/login` | 카드 | GNB 없음. `min-h-screen grid place-items-center px-4`, 카드 `w-full` (max-w 미적용) | 카드 `md:max-w-auth`, 카드 `p-8` | 동일. 배경 `bg-canvas`, 카드 `bg-surface shadow-card` |
+| | | 폼 | 라벨 위 / 입력 아래 1열, 버튼 `w-full h-control` | 동일(1열 유지) | 동일 |
+| 3 | `/dashboard` | 컨테이너 | `max-w-wide` | | |
+| | | **그룹 5개** 〔개정②〕 | 1열. 그룹 간 `space-y-8`, 그룹 안 섹션 간 `space-y-4`. 그룹 제목 `text-title` + 우측 구분선 | `md:` 동일(1열 유지 — 섹션 카드가 표를 담아 좌우로 못 쪼갠다) | 그룹 간 `lg:space-y-10`, 그룹 안 `lg:space-y-6` |
+| | | **`SectionNav`** 〔개정②〕 | 칩 5개 `flex flex-wrap gap-2`, 칩 `min-h-touch` (2줄까지 허용) | 대부분 1줄, 칩 `md:h-control-dense` | 1줄. sticky 아님 |
+| | | KPI 카드 5개 | `grid-cols-1 gap-3`. 아이콘 슬롯 `h-10 w-10` 좌측 + 값/라벨 우측 가로 배치 | `sm:grid-cols-2 md:grid-cols-3 gap-4`, 아이콘 `md:h-12 md:w-12` | `lg:grid-cols-3 xl:grid-cols-5 gap-6`. **사이드바 폭을 뺀 나머지에서 5열**이라 5열 승격을 `xl`로 미뤘다(4.14 하단 경고) |
+| | | 등급분포 | 카드 1개(`shadow-raised`), 헤더에 `총 N명`·`최다 X` 배지. 본문은 **2분할 세로 스택** — 위: **막대+라인 콤보 차트**(`GradeComboChart`, `h-chart`) + 축·범례, 아래: 가로 막대 리스트(등급 배지 + **등급 톤 막대** + 인원 + %) | **세로 스택 유지**(반쪽이 좁아 막대 리스트가 찌그러진다). 차트 높이 `md:h-chart-lg`, 헤더 배지가 제목과 같은 줄로 | 카드 **풀폭 1장**(개정②: 통계 3블록과 같은 그리드에 있지 않다). 카드 안은 `lg:grid-cols-2` **좌우 절반** — 좌: 콤보 차트, 우: 막대 리스트(`lg:border-l`) |
+| | | **③ 점수 구간 분포** 〔개정②〕 | 카드 1장 `shadow-card`. 스트립 1열 → 히스토그램(`h-chart`) → 구간 막대 리스트 **세로 스택** | 스트립 `sm:grid-cols-2`, 차트 `md:h-chart-lg`, 여전히 세로 스택 | 스트립 `lg:grid-cols-4`, 본문 `lg:grid-cols-2` **좌: 히스토그램 / 우: 구간 막대 리스트**(`lg:border-l`) — 등급분포 카드와 **같은 2분할 문법** |
+| | | **④ 학과별 학업성취도** 〔개정②〕 | 스트립 1열 → 지표 표 **행 카드 스택** → 교차표(`.scroll-x`) → 각주 | 스트립 `sm:grid-cols-2`, 지표 표 `md:` 진짜 표 `min-w-table-lg` | 스트립 `lg:grid-cols-4`. 지표 표·교차표 모두 풀폭 세로 배치(좌우로 쪼개지 않는다 — 둘 다 넓은 표) |
+| | | **⑤ 강의별 난이도** 〔개정②〕 | 스트립 1열 → 행 카드 스택(플래그 배지는 카드 상단 우측) | 표 `min-w-table-lg`, 플래그 배지 컬럼 `whitespace-normal` | 동일. 기준선 문구(전체 가중평균)는 스트립 첫 칩 |
+| | | **⑥ 학과 × 강의 교차표** 〔개정②〕 | 행 카드 스택 — 강의 1개 = 카드 1장, 학과별 값은 `col-span-2` 행으로 전부 나열 | `md:` 표. 첫 컬럼 `min-w-matrix-head` **sticky**, 데이터 셀 `min-w-matrix-cell`. `.scroll-x` 안에서만 가로 스크롤 + `showScrollHint` | 동일(열 수 = 학과 수라 데스크탑에서도 스크롤이 남을 수 있다. **정상 동작이다**) |
+| | | **⑦ 평가항목별 분석** 〔개정②〕 | 항목 4개 가로 막대 리스트 → 해석 블록 2개 세로 → `byLecture` 행 카드 스택 | 해석 블록 `md:grid-cols-2`, `byLecture` 표 `min-w-table-lg` | 동일. 해석 블록 `lg:grid-cols-2` 유지(문장이 길어 3열은 줄바꿈이 심하다) |
+| | | **⑧ 학기별 추이** 〔개정②〕 | 스트립 1열 → 라인+막대 차트(`h-chart`, 좌우 양축 눈금) → 학기 표(행 카드 스택) | 차트 `md:h-chart-lg`, 표 `min-w-table-md` | 스트립 `lg:grid-cols-4`, 차트 풀폭, 표 풀폭 (차트 아래) |
+| | | **⑨ 학생 랭킹** 〔개정②〕 | 행 카드 스택 — 상단 [순위 배지][이니셜][이름/학번], 본문 2열(학과·강의수·평점·성취도) | 표 `min-w-table-md` | 동일 + 각주 2줄 |
+| | | **⑩ 위험군 학생** 〔개정②〕 | 행 카드 스택 — 상단 [이니셜][이름/학번] + F학점 배지, 본문 2열 + **위험 사유 배지 `col-span-2`** | 표 `min-w-table-lg`, 사유 컬럼 `whitespace-normal` | 동일 + 판정 기준 안내 배너 + PII 각주 |
+| | | **⑪ 요약 통계 3블록** | 1열 `space-y-4`, 각 블록은 `stack` 표, 카드 `shadow-card`. 제목 옆 `요약` 배지 + 상세 섹션 앵커 링크 | `md:grid-cols-2` (3번째 블록 `md:col-span-2`) | `lg:grid-cols-3` |
+| | | **섹션 로딩/에러** 〔개정②〕 | 섹션 카드는 남고 본문만 스켈레톤/에러 배너. **제목·설명·기준선 문구는 로딩 중에도 보인다** | 동일 | 동일 |
+| 4 | `/lectures` | 컨테이너 | `max-w-content` | | |
+| | | 검색/정렬 | 검색 인풋 `w-full` + 정렬 `select w-full` (모바일 전용 정렬 셀렉트) | `md:flex md:gap-3`, 검색 `md:max-w-form` | 정렬 셀렉트 `lg:hidden` (표 헤더 클릭으로 대체) |
+| | | 목록 | 행 카드 스택. 카드당 코드/강의명/학기/등록일 + [⋯] 액션 메뉴 | 표 5열(코드·강의명·학기·등록일·작업) `min-w-table-md` | 동일, 컨테이너 여유로 스크롤 미발생 |
+| | | 페이지네이션 | 이전/다음 + "1 / 4" 만 | 페이지 번호 5개 노출 | 페이지 번호 7개 + 페이지당 개수 셀렉트 |
+| 5 | `/lectures/new` | 폼 | `max-w-form`, 1열, 액션 버튼 세로 스택 `w-full` (주 버튼이 위) | `md:grid-cols-2`(강의명 `md:col-span-2`, 학기 1칸), 액션 `md:flex md:justify-end md:flex-row-reverse` | 동일 |
+| 6 | `/lectures/[id]` | 상세 | `max-w-detail`. 정의목록 1열(라벨 위/값 아래) | `md:grid-cols-detail-2` 라벨-값 2열 | 동일 + 상단 우측에 [수정]·[삭제] |
+| 7 | `/lectures/[id]/edit` | 폼 | #5와 동일 + 상단 "LEC-0001" 읽기전용 뱃지 | 동일 | 동일 |
+| 8 | `/scores/upload` | 컨테이너 | `max-w-detail` | | |
+| | | 폼 카드 | 1열: 강의 셀렉트 → 파일 드롭존 → [업로드] `w-full` | 강의 셀렉트 `md:max-w-form`, 드롭존 풀폭, 버튼 `md:w-auto` | 좌: 폼 카드 / 우: 엑셀 컬럼 안내 카드 = `lg:grid-cols-3` (폼 `lg:col-span-2`) |
+| | | 컬럼 안내 | 폼 아래 접힌 `<details>` — 기본 **펼침** | 동일(펼침 고정) | 우측 사이드 카드로 상시 노출, `lg:sticky lg:top-24` |
+| | | 결과 영역 | 폼 카드 아래 전체폭. 요약 배너 + 실패행 표(`scroll` 모드, `min-w-table-sm`) | 동일 | 폼 카드 아래 `lg:col-span-3` 전체폭 |
+| 9 | `/scores` | 컨테이너 | `max-w-wide` | | |
+| | | 강의 선택 | `select w-full` (상시 최상단, sticky 아님) | `md:max-w-form` | 검색 필드들과 같은 줄 `lg:grid-cols-4` 첫 칸 |
+| | | 검색 3필드 | 1열 스택 + [검색]/[초기화] `w-full` | `md:grid-cols-2` | `lg:grid-cols-4` 한 줄 |
+| | | 결과 표 | **행 카드 스택**: 상단 학번·이름 + 등급 배지, 하단 4개 점수 `grid-cols-2` + 합계 강조 | 표 10열(학기 포함) `min-w-table-lg`, `.scroll-x`에서 가로 스크롤 발생, 학번 컬럼 `md:sticky md:left-0` | 동일. `xl`에서는 대부분 스크롤 없이 표시 |
+| | | 페이지네이션 | 이전/다음 + "N / M" + 총 건수 | + 페이지 번호 | + `pageSize` 셀렉트(20/50/100) |
+| 10 | `/scores/[id]` | 상세 | `max-w-detail`. ① 학생/강의 요약 카드 ② 점수 카드(항목 4개 `grid-cols-2`) ③ 합계·등급 강조 블록 | 점수 `md:grid-cols-4`, 요약 `md:grid-cols-detail-2` | 동일. ①②③ `lg:grid-cols-3` 중 ③가 `lg:col-span-1` 우측 고정 |
+| 11 | `/departments` | 목록 | 행 카드 스택(코드·학과명·등록일·작업) | 표 4열 `min-w-table-sm` | 동일 |
+| 12 | `/departments/new` | 폼 | `max-w-form` 1열 | `md:grid-cols-2` (코드 1칸 / 학과명 1칸) | 동일 |
+| 13 | `/departments/[id]/edit` | 폼 | #12와 동일 | 동일 | 동일 |
+| 14 | `/grade-scales` | 변환 도구 | 목록 **위** 카드. 점수 인풋 `w-full` + 결과 블록 아래 | `md:flex md:items-end md:gap-4`, 결과 우측 인라인 | `lg:` 동일. 카드 폭 `lg:max-w-detail` |
+| | | 목록 | 행 카드 스택(등급 배지·평점·점수범위·작업) | 표 5열 `min-w-table-sm` | 동일 |
+| 15 | `/grade-scales/new`·`/[id]/edit` | 폼 | 1열: 등급 → 평점 → 최소 → 최대 | `md:grid-cols-2` | `lg:grid-cols-4` 한 줄 + 액션 우측 정렬 |
+| 16 | `*` (404) | 빈 상태 | `min-h-[60vh]` 대신 `py-16` 중앙 정렬, 버튼 `w-full` | 버튼 `md:w-auto` | 동일 |
+
+> `min-h-[60vh]` 같은 arbitrary 값은 쓰지 않는다. 세로 중앙이 필요하면 `grid place-items-center py-16 lg:py-24`로 처리한다.
+
+---
+
+## 3. 사용 토큰
+
+★ = 이번에 **새로 정의**한 토큰 (신규 프로젝트이므로 전부 신규다. 값은 `app/globals.css` / `tailwind.config.ts`에 이미 반영됨).
+
+### 3.1 색상 — 배경/텍스트/경계
+
+| 토큰(클래스) | 라이트 | 다크 | 용도 |
+|---|---|---|---|
+| ★ `bg-canvas` | `#F4F6F8` | `#0D1117` | 페이지 바탕 (`body`) |
+| ★ `bg-surface` | `#FFFFFF` | `#161B22` | 카드·표·패널 |
+| ★ `bg-surface-sunken` | `#EDF0F4` | `#0F141A` | 표 헤더(`thead`), 안내 박스, 코드 블록 |
+| ★ `bg-surface-raised` | `#FFFFFF` | `#1C222B` | 드롭다운·모달·토스트 (+ `shadow-raised/overlay`) |
+| ★ `bg-surface-hover` | `#F2F5F9` | `#222A35` | 표 행 hover, 메뉴 항목 hover |
+| ★ `bg-surface-selected` | `#E8F0FE` | `#1B2740` | 현재 GNB 메뉴, 선택 행 |
+| ★ `bg-overlay` | `#0F1217` | `#000000` | 모달 백드롭 — 항상 `/50`과 함께 (`bg-overlay/50`) |
+| ★ `bg-skeleton` | `#E6EAEF` | `#232B36` | 스켈레톤 블록 |
+| ★ `text-primary` | `#14181F` | `#E7EAEF` | 본문·표 값 (대비 15.3:1 / 14.1:1) |
+| ★ `text-secondary` | `#48515F` | `#AEB7C4` | 라벨, 부제 (8.2:1 / 8.0:1) |
+| ★ `text-muted` | `#6B7482` | `#8A94A2` | 메타·플레이스홀더 (5.0:1 / 5.1:1) |
+| ★ `text-inverse` | `#FFFFFF` | `#0D1117` | 어두운 배경 위 텍스트 |
+| ★ `border-subtle` | `#E2E6EB` | `#262D38` | 카드·표 구분선 (기본 `border` = 이 값) |
+| ★ `border-strong` | `#C6CCD4` | `#3B4552` | 입력 필드 테두리, 강조 구분 |
+
+### 3.2 색상 — 시맨틱 (accent / success / warning / danger)
+
+각 계열은 4개 슬롯을 갖는다: `DEFAULT`(솔리드/아이콘), `-hover`, `-subtle`(연한 배경), `-strong`(subtle 위 텍스트). 솔리드 배경 위 글자는 `text-on-*`.
+
+| 토큰 | 라이트 | 다크 | 용도 |
+|---|---|---|---|
+| ★ `accent` | `#1D4ED8` | `#4C82F0` | 주 버튼, 링크, 활성 탭, 진행 막대 |
+| ★ `accent-hover` / `accent-active` | `#1A44BE` / `#16389D` | `#6B99F4` / `#3D6FD8` | 버튼 hover / active |
+| ★ `accent-subtle` | `#E8EFFD` | `#16233B` | 정보 배너 배경, 선택 배지 |
+| ★ `accent-strong` | `#1A3FAE` | `#A9C5FB` | `accent-subtle` 위 텍스트 |
+| ★ `text-on-accent` | `#FFFFFF` | `#0D1117` | accent 솔리드 위 텍스트 |
+| ★ `success` / `-hover` / `-subtle` / `-strong` | `#146C43` / `#105836` / `#E6F3EC` / `#0F5132` | `#3BB273` / `#5CC88E` / `#10251B` / `#6EDCA0` | 업로드 성공, 성공 토스트, A등급 배지 |
+| ★ `warning` / `-hover` / `-subtle` / `-strong` | `#A15C07` / `#864C05` / `#FBF1E0` / `#7A4405` | `#E0A13A` / `#ECB458` / `#2A1F0F` / `#F2C77A` | 부분 실패 안내, C/D 등급 배지 |
+| ★ `danger` / `-hover` / `-subtle` / `-strong` | `#B42318` / `#911B12` / `#FDECEA` / `#912018` | `#F0685C` / `#F6857A` / `#2B1615` / `#FCA79D` | 삭제 버튼, 에러 배너, F등급, 필드 에러 |
+| ★ `ring-focus` | `#1D4ED8` | `#6B99F4` | 포커스 링 (`.focus-ring`) |
+
+### 3.3 치수·모양·모션
+
+| 토큰 | 값 | 용도 |
+|---|---|---|
+| ★ `max-w-content` / `max-w-wide` | 80rem / 90rem | 일반 페이지 / 대시보드·성적조회 |
+| ★ `max-w-form` / `max-w-detail` / `max-w-auth` / `max-w-modal` | 42 / 56 / 24 / 32 rem | 폼·상세·로그인·모달 |
+| ★ `min-w-table-sm` / `-md` / `-lg` | 40 / 52 / 68 rem | 표 최소폭 (3~4열 / 5~6열 / 9~10열) |
+| ★ `min-h-touch` / `min-w-touch` | 2.75rem (44px) | 터치 타깃 하한 |
+| ★ `h-control` / `h-control-dense` | 2.75rem / 2.25rem | 입력·버튼 기본 / md 이상 보조 컨트롤 |
+| ★ `h-header` / `h-header-md` | 3.5rem / 4rem | **상단바(TopBar)** — 모바일·태블릿 / `md` 이상 |
+| ★★ **`sidebar`** (spacing) | **17rem (272px)** | **데스크탑 상시 사이드바 폭.** `spacing`에 정의했으므로 `w-sidebar`(사이드바 자신) · `lg:pl-sidebar`(메인 컬럼 오프셋) · `lg:left-sidebar`가 **같은 값 하나**에서 나온다. 272px 근거: 최장 라벨 「수강과목별 성적조회」가 `pl-9`(들여쓰기) + `pr-3` 포함 `text-body`에서 1줄에 들어가는 최소치 |
+| ~~`max-w-donut`~~ | ~~14rem~~ | **삭제됨** 〔2026-08-01 콤보 개정〕. 도넛이 폐기되어 "최대 지름"이라는 개념 자체가 사라졌다. 콤보 차트는 폭을 부모에 100% 맡기므로 `max-w-*`가 필요 없다. `tailwind.config.ts`의 `maxWidth.donut`도 함께 제거했다 — **남겨두면 죽은 토큰이 된다** |
+| ★★★ **`h-chart` / `h-chart-lg`** | **10rem (160px) / 12rem (192px)** | **등급분포 콤보 차트(`GradeComboChart`)의 플롯 높이.** 폭은 항상 `w-full`(고정 px 폭 없음)이고 **높이만 토큰으로 고정**한다 — SVG `viewBox`는 폭에 맞춰 늘어나므로 높이를 정하지 않으면 좁은 화면에서 납작해진다. 160px 근거: 가로 그리드선 4개(3구간)의 간격이 ≈53px여서 `text-micro`(12px) y축 눈금 라벨이 겹치지 않는 최소치. `md` 이상에서 192px |
+| ★★★ **`stroke-chart-grid`** | `border-subtle` 변수 참조 | **차트 가로 그리드선·기준선.** `border-subtle`은 `borderColor`에만 등록돼 있어 **`stroke-border-subtle` 클래스는 생성되지 않는다.** 그래서 `theme.extend.stroke`에 이름을 따로 뒀다(값은 같은 CSS 변수 → 다크모드 자동) |
+| ★★★ **`stroke-chart-line`** | `text-primary` 변수 참조 | **콤보 차트의 비율(%) 꺾은선과 마커 테두리.** 같은 이유로 `stroke-text-primary`는 존재하지 않는다. 막대의 등급 색(success/accent/warning/danger)과 **겹치지 않는 중립색**이어야 선이 어느 막대 위에서도 읽힌다 |
+| ★★★ **`grid-cols-chart-axis`** | `auto minmax(0, 1fr)` | **차트 축 레이아웃** = [y축 눈금 라벨(내용폭)] + [플롯(가변)]. 2행으로 쓰면 2행 2열이 x축 라벨이 되어 **라벨 열 폭 = 플롯 폭**이 정확히 일치한다(밴드 정렬이 자동으로 맞는다). `minmax(0,1fr)`이 아니면 SVG가 트랙을 밀어 카드가 가로로 넘친다 |
+| ★ `w-drawer` / `w-toast` | 20rem / 22rem | `<lg` 내비 드로어(터치 여유로 사이드바보다 넓게) / 토스트 |
+| ★ `rounded` (기본 6) `-sm 4` `-lg 8` `-xl 12` `-2xl 16` `-full` | | 배지 / 버튼·입력 / 카드 / 모달 / 바텀시트 |
+| ★ `shadow-card` / `shadow-raised` / `shadow-overlay` | CSS 변수 | 카드(기본) / **강조 카드·드롭다운·토스트** / 모달·드로어 |
+| ★★ `z-raised 10` `z-header 30` **`z-overlay 40`** **`z-drawer 50`** `z-modal 60` `z-toast 70` | | 층위 (다른 z 값 금지). **`overlay`↔`drawer` 값을 교정했다** — 아래 주석 참고 |
+| ★ `duration-fast/base/slow` | 120 / 180 / 240 ms | 전환 |
+| ★ `ease-standard` / `ease-exit` | `cubic-bezier(.2,0,0,1)` / `(.4,0,1,1)` | 진입 / 퇴장 |
+| ★ `animate-fade-in` `scale-in` `slide-in-right` `slide-in-bottom` `toast-in` | | 오버레이·바텀시트·토스트 |
+| ★★ **`animate-slide-in-left`** | `translateX(-100%) → 0`, 240ms `ease-standard` | **내비 드로어**(좌측 진입). 데스크탑 사이드바가 좌측이므로 드로어도 같은 방향에서 들어와야 공간 감각이 일치한다. 기존 `slide-in-right`는 이제 쓰지 않는다 |
+| ★ `grid-cols-detail-2` | `minmax(7rem,10rem) 1fr` | 상세 정의목록 라벨-값 2열 |
+
+> **★★ 표시 = 2026-08-01 사이드바 개편에서 추가/교정한 토큰. ★★★ = 2026-08-01 등급분포 2분할/콤보 차트 개정에서 추가·삭제한 토큰.**
+>
+> **콤보 차트에도 새 "색상 값"은 없다.** 막대 색은 `fill-success` / `fill-accent` / `fill-warning` / `fill-danger`,
+> 마커 안쪽은 `fill-surface` — 전부 `theme.extend.colors`에 이미 있는 이름에서 Tailwind가 `fill-*`를 자동 생성한 것이다.
+> 새로 추가한 `stroke-chart-grid` / `stroke-chart-line`도 **새 CSS 변수가 아니라 기존 변수(`--color-border-subtle`, `--color-text-primary`)를 가리키는 별칭**이다.
+> `app/globals.css`는 **한 줄도 바뀌지 않았고**, 다크모드는 기존 토큰 값 교체로 자동 대응된다.
+>
+> ⚠️ **함정**: `border-subtle`·`text-primary`는 각각 `borderColor`·`textColor`에만 등록돼 있다.
+> `stroke-border-subtle`, `stroke-text-primary`, `bg-primary` 같은 클래스는 **빌드되지 않고 조용히 무시된다.** 반드시 위 별칭을 쓴다.
+>
+> **SVG 내부 좌표(viewBox 320×160, 밴드 폭, 마커 반지름 등)는 CSS 값이 아니라 `viewBox` 사용자 단위**이므로 Tailwind 토큰으로 만들지 않는다.
+> 대신 `GradeComboChart` 파일 상단에 상수로 **한 번만** 정의한다(4.15.2 참고).
+>
+> **z-index 교정 (버그 수정).** 이전 값은 `drawer 40 < overlay 50`이어서 **드로어 백드롭이 드로어 패널을 덮는** 순서였다
+> (모달은 `overlay 50 < modal 60`으로 정상이었기에 드러나지 않았다). `overlay 40 / drawer 50`으로 교정했다.
+> **클래스 이름은 그대로**이므로 기존 `components/layout/MobileNavDrawer.tsx`·`components/feedback/ConfirmDialog.tsx`는
+> 수정 없이 올바른 순서를 얻는다. 규칙: **백드롭은 언제나 `z-overlay`, 그 위에 뜨는 패널은 `z-drawer` 또는 `z-modal`.**
+>
+> **새 색상 토큰은 추가하지 않았다.** 사이드바/상단바/리치 카드 모두 기존 `surface·surface-hover·surface-selected·surface-sunken`
+> + `accent/success/warning/danger`의 `-subtle`/`-strong` 슬롯 조합으로 충분히 표현된다.
+> 참조 템플릿의 색은 **한 값도 가져오지 않았다.** (4.14의 아이콘 톤 배정 근거 참고)
+
+### 3.4 유틸리티 클래스 (globals.css `@layer`)
+
+| 클래스 | 정의 | 용도 |
+|---|---|---|
+| ★ `.focus-ring` | `focus-visible:ring-2 ring-focus ring-offset-2 ring-offset-canvas` | **모든** 인터랙티브 요소에 부착 (버튼/링크/입력/행/헤더셀) |
+| ★ `.scroll-x` | `w-full overflow-x-auto overscroll-x-contain` | 넓은 표·코드블록 전용 래퍼 |
+| ★ `.skeleton` | `animate-pulse rounded-md bg-skeleton` | 스켈레톤 조각 |
+| ★ `.is-refetching` | `pointer-events-none opacity-60 transition-opacity` | 재조회 중 기존 내용 흐림 |
+
+### 3.5 간격 스케일
+
+Tailwind 기본 4px 스케일을 쓰되 **아래 스텝만** 사용한다:
+`0 · 0.5 · 1 · 1.5 · 2 · 3 · 4 · 5 · 6 · 8 · 10 · 12 · 16`
+
+| 상황 | 값 |
+|---|---|
+| 폼 필드 내부(라벨↔입력) | `gap-1.5` |
+| 폼 필드 간 | `gap-4` (모바일) / `md:gap-5` |
+| 카드 내부 패딩 | `p-4` / `md:p-6` |
+| 카드 간 | `gap-3` (모바일) / `sm:gap-4` / `lg:gap-6` |
+| 섹션 간 | `space-y-6 lg:space-y-8` |
+| 표 셀 패딩 | `px-3 py-3 md:px-4` (헤더는 `md:py-2`) — `2.5` 같은 스케일 밖 스텝 금지 |
+| 인접 터치 타깃 간격 | `gap-2` 이상 |
+| **그룹 간 간격** 〔개정②〕 | `space-y-8 lg:space-y-10` — 섹션 간(`space-y-4 lg:space-y-6`)보다 **반드시 넓어야** 그룹이 그룹으로 읽힌다 |
+
+### 3.6 확장 분석 8종이 추가로 쓰는 토큰 〔2026-08-01 개정 ② 신설〕
+
+**새 색상 토큰은 0개다.** 늘린 것은 치수/레이아웃 토큰 3개뿐이며, 셋 다 `tailwind.config.ts`에 이미 반영해 두었다.
+`app/globals.css`는 색 정의가 한 줄도 바뀌지 않았고, 앵커 스크롤 규칙 2줄만 추가되었다.
+
+| 토큰(클래스) | 값 | 라이트/다크 | 왜 필요한가 |
+|---|---|---|---|
+| ★ `min-w-matrix-cell` | `7rem` (112px) | 색 아님 | **학과 × 강의 교차표**는 열 개수가 학과 수에 따라 달라진다. `min-w-table-lg`(68rem)는 **표 전체**의 고정 최소폭이라 학과가 15개면 열당 68px로 뭉개진다. 그래서 표 최소폭 대신 **셀 최소폭**을 주고 표가 열 수만큼 자연스럽게 넓어지게 한다(`.scroll-x`가 흡수). 112px 근거: `12명 / 78.3점 / ▲+2.1` 3줄이 `px-3` 패딩 안에서 줄바꿈 없이 들어가는 최소치 |
+| ★ `min-w-matrix-head` | `11rem` (176px) | 색 아님 | 교차표 첫 컬럼(강의명 + 학기 2줄). `stickyFirstColumn`이라 너무 넓으면 화면을 잡아먹는다. 176px 근거: 「데이터베이스개론」(9자) + `text-body-sm`이 1줄에 들어가는 폭 |
+| ★ `grid-cols-chart-axis-2y` | `auto minmax(0, 1fr) auto` | 색 아님 | **좌우 양쪽에 y축 눈금이 있는** 차트 레이아웃(`TermTrendChart` 4.27.1). 기존 `grid-cols-chart-axis`(2열)는 우축 눈금 자리가 없다. `minmax(0,1fr)`이 아니면 SVG가 트랙을 밀어 카드가 가로로 넘친다 |
+| ★ `app/globals.css` — `html { scroll-behavior: smooth }` + `section[id] { scroll-margin-top: theme("height.header-md") }` | — | — | `SectionNav` 앵커 이동 시 **sticky 상단바가 섹션 제목을 가리는 것**을 막는다. 11개 섹션에 `scroll-mt-16` 클래스를 손으로 붙이면 반드시 하나를 빠뜨린다. `prefers-reduced-motion`은 파일 하단 블록이 이미 `scroll-behavior: auto !important`로 되돌린다 |
+
+**재사용만 하고 새로 만들지 않은 것 (확인용)**
+
+| 필요했던 것 | 이미 있는 토큰으로 해결 |
+|---|---|
+| 편차 양수/음수 색 | `text-success-strong` / `text-danger-strong` / `text-muted` (4.21.2에서 **언제 색을 쓰고 언제 안 쓰는지** 규정) |
+| 인플레이션·난이도·위험사유 라벨 | `Badge` 톤 5종(`neutral/accent/success/warning/danger`) 그대로 |
+| 신규 차트 2종의 선·그리드 | `stroke-chart-line` / `stroke-chart-grid` (등급분포 콤보 차트가 쓰던 것 그대로) |
+| 신규 차트 2종의 높이 | `h-chart` / `md:h-chart-lg` 그대로 |
+| 섹션 스트립 배경 | `bg-surface-sunken` (카드 안쪽 = 그림자 0층, 4.4) |
+| 교차표 행 최댓값 강조 | `bg-accent-subtle` + `text-accent-strong` + `font-semibold` |
+| 이니셜 아바타 칩 | `bg-surface-sunken text-secondary` / 위험군은 `bg-danger-subtle text-danger-strong` |
+
+> ⚠️ **3.3의 함정이 신규 차트에도 그대로 적용된다.** `stroke-border-subtle`·`stroke-text-primary`·`bg-primary`는 **생성되지 않는 클래스**다.
+> 선 색은 `stroke-chart-grid` / `stroke-chart-line`, 막대 채움은 `fill-accent` / `fill-success` / `fill-warning` / `fill-danger` / `fill-surface`만 쓴다.
+
+---
+
+## 4. 컴포넌트 명세
+
+파일 배치 제안(구현자 재량이나 이름은 이 문서와 일치시킬 것):
+`components/ui/*` (원자) · `components/layout/*` (셸) · `components/data/*` (표·페이지네이션) · `components/feedback/*` (토스트·배너·빈상태·스켈레톤).
+
+variant 조합은 **`cva`(class-variance-authority)** 로 정의한다. 컴포넌트 JSX 안에 조건부 문자열 연결을 흩뿌리지 않는다.
+
+---
+
+### 4.1 `Button`
+
+- **목적**: 모든 클릭 액션의 단일 진입점. `<a>`로도 렌더 가능(`asChild` 또는 `as` prop).
+- **props**
+
+| 이름 | 타입 | 기본값 |
+|---|---|---|
+| `variant` | `'primary' \| 'secondary' \| 'ghost' \| 'danger' \| 'link'` | `'secondary'` |
+| `size` | `'sm' \| 'md' \| 'lg'` | `'md'` |
+| `loading` | `boolean` | `false` |
+| `disabled` | `boolean` | `false` |
+| `fullWidth` | `boolean` | `false` |
+| `iconLeft` / `iconRight` | `ReactNode` | — |
+| `type` | `'button' \| 'submit'` | `'button'` |
+
+- **base 클래스**
+  `inline-flex items-center justify-center gap-2 rounded font-medium text-body whitespace-nowrap select-none transition-colors duration-fast ease-standard focus-ring disabled:pointer-events-none disabled:opacity-50`
+- **size**
+  - `sm`: `min-h-touch px-3 md:min-h-0 md:h-control-dense md:text-caption` — **모바일에서는 절대 44px 미만이 되지 않는다.**
+  - `md`: `min-h-touch px-4 md:h-control-dense`
+  - `lg`: `min-h-touch h-control px-5 text-body`
+  - `fullWidth`: `w-full` (모바일 기본으로 자주 쓰고 `md:w-auto`로 해제)
+- **variant / 상태**
+
+| variant | default | hover | active | focus-visible | disabled | loading |
+|---|---|---|---|---|---|---|
+| `primary` | `bg-accent text-on-accent` | `hover:bg-accent-hover` | `active:bg-accent-active` | `.focus-ring` | `opacity-50` | 스피너 + `aria-busy="true"`, 라벨 유지, `disabled` |
+| `secondary` | `bg-surface text-primary border border-strong` | `hover:bg-surface-hover` | `active:bg-surface-sunken` | 〃 | 〃 | 〃 |
+| `ghost` | `bg-transparent text-secondary` | `hover:bg-surface-hover hover:text-primary` | `active:bg-surface-sunken` | 〃 | 〃 | 〃 |
+| `danger` | `bg-danger text-on-danger` | `hover:bg-danger-hover` | `active:bg-danger-hover` | 〃 | 〃 | 〃 |
+| `link` | `text-accent underline underline-offset-2 px-0` | `hover:text-accent-hover` | — | 〃 | 〃 | — |
+
+- **loading**: `iconLeft` 자리에 `<Spinner size="sm"/>`(`animate-spin` + `border-current border-t-transparent rounded-full`), 버튼 폭이 흔들리지 않도록 라벨은 그대로 둔다.
+- **반응형**: 모바일에서 주 액션은 `fullWidth`, `md:w-auto`. 아이콘 전용 버튼은 `min-h-touch min-w-touch` 필수 + `aria-label` 필수.
+
+---
+
+### 4.2 앱 셸 — `Sidebar` + `TopBar` + `MobileNavDrawer` 〔2026-08-01 전면 개정〕
+
+> **이전 판의 `AppHeader`(가로 메뉴 + 드롭다운) 명세는 폐기한다.**
+> 기존 `components/layout/AppHeader.tsx`는 `TopBar.tsx`로 대체되고, 드롭다운 팝오버 로직은 전부 삭제된다.
+> 아래 3개 컴포넌트 + 공유 하위 컴포넌트 `SidebarNav` 1개, 총 4개로 구성한다.
+
+```
+components/layout/
+  AppShell.tsx          셸 조립 (Sidebar + MobileNavDrawer + 메인 컬럼)
+  Sidebar.tsx           ≥lg 상시 사이드바 (껍데기: 브랜드 + <SidebarNav/> + 푸터)
+  TopBar.tsx            상단바 (사용자 정보 + 로그아웃 + <lg 햄버거)
+  MobileNavDrawer.tsx   <lg 드로어 (껍데기: 브랜드 + <SidebarNav/> + 계정 섹션)
+  SidebarNav.tsx        ★ 메뉴 계층의 유일한 구현체 — Sidebar와 Drawer가 공유
+  nav-items.ts          NAV_ITEMS 단일 상수
+```
+
+---
+
+#### 4.2.0 `NAV_ITEMS` (단일 상수 · `components/layout/nav-items.ts`)
+
+사이드바와 드로어는 **같은 배열을 소비한다.** 메뉴를 두 벌 쓰지 않는다.
+
+| 순서 | 라벨 | 형태 | href | 아이콘 키 |
+|---|---|---|---|---|
+| 1 | 대시보드 | 단일 링크 | `/dashboard` | `gauge` |
+| 2 | 수강과목 관리 | 그룹(라우트 없음) | — | `book` |
+| 2-1 | 목록 | 하위 링크 | `/lectures` | — |
+| 2-2 | 생성 | 하위 링크 | `/lectures/new` | — |
+| 3 | 성적관리 | 그룹(라우트 없음) | — | `clipboard` |
+| 3-1 | 성적입력 | 하위 링크 | `/scores/upload` | — |
+| 3-2 | 수강과목별 성적조회 | 하위 링크 | `/scores` | — |
+| 4 | 기준정보 관리 | 그룹(라우트 없음) | — | `sliders` |
+| 4-1 | 학과 관리 | 하위 링크 | `/departments` | — |
+| 4-2 | 학점환산기준 관리 | 하위 링크 | `/grade-scales` | — |
+
+**활성(active) 판정 규칙 — 「최장 접두어 1개만 활성」**
+
+1. 전체 링크 중 `pathname === href` 이거나 `pathname.startsWith(href + "/")` 인 후보를 모은다.
+2. 후보가 여럿이면 **`href` 문자열이 가장 긴 것 하나만** 활성으로 삼는다.
+3. 결과 예시 — 이 규칙이 지켜지는지 구현 후 반드시 확인할 것:
+
+| pathname | 활성 링크 |
+|---|---|
+| `/lectures` | 수강과목 관리 > 목록 |
+| `/lectures/3/edit` | 수강과목 관리 > 목록 (spec 결정 D) |
+| `/lectures/new` | 수강과목 관리 > **생성** (`/lectures`보다 길다) |
+| `/scores` | 성적관리 > 수강과목별 성적조회 |
+| `/scores/upload` | 성적관리 > **성적입력** |
+| `/scores/12` | 성적관리 > 수강과목별 성적조회 |
+
+> ⚠️ 규칙 2가 없으면 `/lectures/new`에서 「목록」과 「생성」이 **동시에 활성**으로 보인다. 가장 흔한 회귀 지점이다.
+
+**아이콘**: 외부 아이콘 라이브러리를 도입하지 않는다(의존성 추가 없음). `components/ui/icons.tsx`에
+`stroke="currentColor" fill="none" stroke-width="1.5"` 24×24 viewBox 인라인 SVG를 상수로 두고,
+사용처에서 `h-5 w-5 shrink-0`로만 크기를 준다. 색은 절대 SVG 안에 넣지 않는다(`currentColor` 고정).
+
+---
+
+#### 4.2.1 `SidebarNav` — 메뉴 계층 (사이드바 · 드로어 공용)
+
+- **목적**: 아코디언 그룹 + 활성 표시를 한 곳에서 구현한다. `Sidebar`와 `MobileNavDrawer`는 껍데기만 다르다.
+- **props**
+  | 이름 | 타입 | 기본값 | 설명 |
+  |---|---|---|---|
+  | `items` | `NavNode[]` | `NAV_ITEMS` | 메뉴 트리 |
+  | `onNavigate` | `() => void` | `undefined` | 링크 클릭 시 호출. 드로어가 자신을 닫는 데 쓴다(사이드바는 미전달) |
+- **아코디언 상태**(spec 결정 B·C)
+  - 초기값: **3개 그룹 모두 펼침.** 저장하지 않는다(새로고침 시 기본값 복귀).
+  - 활성 링크를 가진 그룹은 **접을 수 없다** → 그룹 헤더 버튼에 `aria-disabled` 대신 **접기 시도를 무시**하고 `aria-expanded="true"` 유지. 이유: 접으면 현재 위치가 화면에서 사라져 방향 감각을 잃는다(spec 결정 C의 "항상 펼침"을 시각적으로 보증).
+    - 이때 헤더 버튼은 `cursor-default`, hover 배경 없음, `title="현재 위치가 포함된 그룹입니다"`.
+  - 그룹 헤더는 `<button type="button">`이며 **절대 `<a>`가 아니다**(라우트 없음, spec 결정 B).
+
+**클래스 — 컨테이너**
+
+```
+<nav aria-label="주 메뉴" class="flex-1 overflow-y-auto overscroll-contain px-3 py-4">
+  <ul class="space-y-1">
+```
+
+**클래스 — 최상위 단일 링크(대시보드)**
+
+```
+relative flex min-h-touch items-center gap-3 rounded-lg px-3 text-body font-medium
+text-secondary transition-colors duration-fast ease-standard
+hover:bg-surface-hover hover:text-primary focus-ring
+```
+| 상태 | 추가 클래스 |
+|---|---|
+| default | — |
+| hover | `hover:bg-surface-hover hover:text-primary` |
+| focus-visible | `.focus-ring` (`ring-2 ring-focus ring-offset-2`) — **`ring-offset-canvas`가 사이드바(`bg-surface`)와 어긋나므로 사이드바 내부 요소만 `focus-visible:ring-offset-surface`로 덮어쓴다** |
+| active(현재 경로) | `bg-surface-selected text-accent-strong font-semibold` + `aria-current="page"` + 좌측 인디케이터 |
+| pressed | `active:bg-surface-selected` |
+| disabled | 없음(내비 링크는 비활성화하지 않는다) |
+| loading | 없음 |
+
+좌측 인디케이터(활성 시에만 렌더, 색 외 단서 보강):
+`<span aria-hidden class="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent"/>`
+아이콘: `h-5 w-5 shrink-0` — default `text-muted`, active `text-accent`, hover `group-hover:text-secondary`.
+
+**클래스 — 그룹 헤더 버튼**
+
+```
+<button type="button" aria-expanded={open} aria-controls={`nav-group-${id}`}
+  class="group flex w-full min-h-touch items-center gap-3 rounded-lg px-3 text-body font-medium
+         text-secondary transition-colors duration-fast ease-standard
+         hover:bg-surface-hover hover:text-primary focus-ring">
+  <Icon class="h-5 w-5 shrink-0 text-muted"/>
+  <span class="min-w-0 flex-1 truncate text-left">수강과목 관리</span>
+  <!-- 접혀 있는데 안에 현재 위치가 있을 때만: 색 외 단서 겸 힌트 점 -->
+  <span aria-hidden class="h-1.5 w-1.5 shrink-0 rounded-full bg-accent"/>
+  <ChevronDown class="h-5 w-5 shrink-0 text-muted transition-transform duration-base ease-standard
+                      [펼침 시] rotate-180"/>
+</button>
+```
+- 활성 자식을 포함한 그룹 헤더: `text-primary font-semibold`.
+- 접힘/펼침 상태는 **`aria-expanded` + chevron 회전 + (접힘 시) 점** 3중으로 전달한다. 색만으로 구분하지 않는다.
+
+**클래스 — 하위 링크 목록**
+
+```
+<ul id={`nav-group-${id}`} class="ml-5 mt-1 space-y-0.5 border-l border-subtle pl-2">
+```
+하위 링크:
+```
+relative flex min-h-touch items-center rounded-lg px-3 text-body text-secondary
+transition-colors duration-fast ease-standard
+hover:bg-surface-hover hover:text-primary focus-ring
+```
+활성: `bg-surface-selected text-accent-strong font-semibold` + `aria-current="page"` +
+인디케이터 `<span aria-hidden class="absolute -left-2 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent"/>`
+(부모의 `border-l` 위에 정확히 겹쳐서 "여기가 현재 위치"를 가이드라인으로 표현한다)
+
+**반응형 동작 (SidebarNav 자체)**
+
+| | 모바일 (<640) | 태블릿 (≥768) | 데스크탑 (≥1024) |
+|---|---|---|---|
+| 렌더 위치 | 드로어 내부 | 드로어 내부(동일) | 사이드바 내부 |
+| 항목 높이 | `min-h-touch`(44) | `min-h-touch` | `min-h-touch` 유지 — 데스크탑에서도 줄이지 않는다(터치 노트북 대응, 밀도보다 명중률) |
+| 폰트 | `text-body`(16) | 동일 | 동일 |
+| 링크 클릭 후 | `onNavigate()` → 드로어 닫힘 | 동일 | 아무 일도 없음(사이드바 유지) |
+
+---
+
+#### 4.2.2 `Sidebar` (≥1024 상시 노출)
+
+- **목적**: 데스크탑의 유일한 내비게이션 면. **접기(collapse) 기능 없음**(spec 결정 E).
+- **props**: 없음(라우팅은 `usePathname`으로 내부 처리).
+- **루트 클래스**
+
+```
+hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-header lg:flex lg:w-sidebar lg:flex-col
+lg:border-r lg:border-subtle lg:bg-surface
+```
+> `bg-surface`(흰/짙은 패널) vs 메인 영역 `bg-canvas`(회/더 짙음)의 명도차 + `border-r`로 셸 계층을 만든다.
+> **그림자를 쓰지 않는 이유**: 화면 전체 높이의 세로 그림자는 스크롤 시 잔상처럼 보이고, 경계선만으로 충분하다.
+
+- **브랜드 블록** (`h-header-md`로 상단바와 **눈높이를 맞춘다** — 두 영역의 하단 경계선이 한 줄로 이어져야 한다)
+
+```
+flex h-header-md shrink-0 items-center gap-3 border-b border-subtle px-6
+  로고마크  grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent text-on-accent
+            (텍스트 마크 "성" 또는 인라인 SVG. 이미지 파일 쓰지 않음)
+  서비스명  text-section font-semibold text-primary  "성적관리"
+  부제      text-caption text-muted                  "학사 백오피스"
+  → 두 줄이므로 <span class="flex min-w-0 flex-col leading-tight">로 감싼다
+  → 전체를 <Link href="/dashboard" class="... focus-ring rounded-lg"> 로 감싼다(홈 링크)
+```
+
+- **본문**: `<SidebarNav/>` (위 4.2.1). `flex-1 overflow-y-auto` 이므로 메뉴가 길어져도 사이드바만 스크롤된다.
+- **푸터**: `shrink-0 border-t border-subtle px-6 py-3 text-caption text-muted` — 버전/환경 표기 한 줄.
+  넣을 정보가 없으면 **푸터를 생략한다**(빈 박스를 남기지 않는다).
+- **상태별**
+  | 상태 | 처리 |
+  |---|---|
+  | default | 위 클래스 |
+  | loading | 메뉴는 정적 데이터이므로 **스켈레톤 없이 즉시 렌더**한다. `/users/me` 대기는 `TopBar`만의 문제다 |
+  | error | 없음(내비는 API에 의존하지 않는다) |
+- **반응형**: `<640` 렌더 안 함 / `≥768` 렌더 안 함 / `≥1024` 상시 노출·고정폭 `w-sidebar`.
+  > `md`(768)가 아니라 `lg`(1024)를 기준으로 잡은 근거는 spec 결정 F. 768px 태블릿 세로에서 272px을 떼면
+  > 콘텐츠가 496px밖에 남지 않아 `md:` 2열 표·폼이 무너진다.
+
+---
+
+#### 4.2.3 `TopBar` (상단바 — 이동 링크 없음)
+
+- **목적**: 사용자 신원 표시 + 로그아웃 + (`<lg`) 드로어 트리거. **메뉴 링크를 두지 않는다**(spec 결정 A).
+- **props**: `onOpenNav: () => void`, `onOpenAccount: () => void`, `user: {name, loginId} | null`, `isLoadingUser: boolean`, `breadcrumb: string[]`
+- **루트 클래스**
+
+```
+sticky top-0 z-header flex h-header md:h-header-md w-full items-center gap-3
+border-b border-subtle bg-surface px-4 sm:px-6 lg:px-8
+```
+> 반투명 + `backdrop-blur`를 쓰지 않는다. 불투명 `bg-surface`여야 sticky 표 헤더(`z-raised`)가 스크롤로 지나갈 때 깨끗하다.
+
+- **좌측 — `<lg`**
+  - 햄버거 `lg:hidden inline-flex min-h-touch min-w-touch items-center justify-center rounded-lg text-secondary transition-colors duration-fast hover:bg-surface-hover hover:text-primary focus-ring`
+    `aria-label="메뉴 열기"` / 열려 있을 때 `"메뉴 닫기"`, `aria-expanded`, `aria-controls="app-nav-drawer"`
+  - 서비스명 `lg:hidden text-section font-semibold text-primary truncate` — 사이드바가 없으므로 여기서 브랜드를 책임진다.
+- **좌측 — `≥lg`**
+  - 현재 위치 표시 `hidden lg:block min-w-0 truncate text-caption text-muted`
+    형식: `성적관리 / 수강과목별 성적조회` (그룹명 → 페이지명). 단일 링크 페이지는 페이지명만.
+    **링크가 아니라 순수 텍스트다**(이동 경로는 사이드바로 단일화). 앞에 `<span class="sr-only">현재 위치: </span>`.
+    `<nav>`로 감싸지 않는다 — 랜드마크 중복을 만들지 않기 위함.
+- **우측** `ml-auto flex shrink-0 items-center gap-2 md:gap-3`
+  - 이름 `hidden md:block min-w-0 truncate text-caption text-secondary` — `user.name ?? user.loginId`
+    (고정 px 폭을 주지 않는다. 부모가 `shrink-0`이므로 이름 요소만 `min-w-0 truncate`로 긴 이름을 흡수한다)
+  - 아바타(이니셜 1글자, `name`의 첫 글자 / 없으면 `loginId` 첫 글자 대문자)
+    - `<lg`: **버튼** `grid min-h-touch min-w-touch place-items-center rounded-full bg-accent-subtle text-caption font-semibold text-accent-strong focus-ring lg:hidden`
+      `aria-label="{이름} 계정 메뉴 열기"` → 드로어를 열고 계정 섹션으로 포커스 이동
+    - `≥lg`: **장식** `hidden lg:grid h-10 w-10 place-items-center rounded-full bg-accent-subtle text-caption font-semibold text-accent-strong` + `aria-hidden`
+  - 로그아웃 `hidden lg:inline-flex` → `Button variant="ghost" size="sm"` "로그아웃"
+    > `<lg`에서는 상단바에 로그아웃을 두지 않는다. **정보가 사라지는 게 아니라 드로어 하단 계정 섹션으로 이동**한 것이며, 아바타 버튼이 그 지점으로 바로 데려간다.
+- **상태별**
+  | 상태 | 처리 |
+  |---|---|
+  | default | 위 |
+  | loading (`/users/me` 미완료) | 이름 자리 `.skeleton h-5 w-20`, 아바타 자리 `.skeleton h-10 w-10 rounded-full`. 컨테이너 `aria-busy="true"`. **높이는 그대로 유지**해 레이아웃 점프를 막는다 |
+  | error (`name` null) | `loginId`로 대체(spec 4.2). 그것도 없으면 아바타 이니셜 `·` + 이름 자리 공백 |
+  | 로그아웃 진행 중 | 버튼 `loading` + `disabled`, 라벨 유지 |
+- **반응형**
+
+| | 모바일 (<640) | 태블릿 (≥768) | 데스크탑 (≥1024) |
+|---|---|---|---|
+| 높이 | `h-header` (56) | `md:h-header-md` (64) | `md:h-header-md` (64) — 사이드바 브랜드 블록과 같은 높이 |
+| 좌측 | ☰ + 서비스명 | ☰ + 서비스명 | 현재 위치 텍스트(☰ 사라짐) |
+| 이름 | 숨김(아바타 `aria-label`·드로어에 존재) | `md:inline` 표시 | 표시 |
+| 로그아웃 | 드로어 안 | 드로어 안 | 상단바 우측 버튼 |
+| 좌우 패딩 | `px-4` | `sm:px-6` | `lg:px-8` |
+
+---
+
+#### 4.2.4 `MobileNavDrawer` (<1024)
+
+> **브레이크포인트가 `md`(768) → `lg`(1024)로 상향되었다.** 기존 `md:hidden`을 전부 `lg:hidden`으로 바꿔야 한다.
+> 파일명은 유지하되 "모바일 전용"이 아니라 "**`lg` 미만 전용**"으로 읽는다.
+
+- **props**: `open: boolean`, `onClose: () => void`, `initialFocus?: 'nav' | 'account'`, `user`
+- **백드롭**: `fixed inset-0 z-overlay bg-overlay/50 animate-fade-in lg:hidden` (클릭 시 닫힘)
+- **패널**: `fixed inset-y-0 left-0 z-drawer flex w-drawer max-w-full flex-col bg-surface shadow-overlay animate-slide-in-left lg:hidden`
+  - **좌측**에서 진입한다(이전 판은 우측이었다). 데스크탑 사이드바와 같은 자리에서 나와야 공간 감각이 일치한다.
+  - `w-drawer`(320) > `w-sidebar`(272) — 터치 명중률을 위해 드로어를 더 넓게 잡는다. `max-w-full`로 320px 미만 기기에서도 넘치지 않는다.
+- **구성**
+  1. 헤더 `flex h-header shrink-0 items-center gap-3 border-b border-subtle px-4`
+     — 로고마크 + 서비스명 + `ml-auto` 닫기 버튼 `inline-flex min-h-touch min-w-touch ... rounded-lg focus-ring` `aria-label="메뉴 닫기"`
+  2. 본문 `<SidebarNav onNavigate={onClose}/>` — **사이드바와 완전히 동일한 아코디언 계층.**
+     > 이전 판은 "항목이 7개뿐이라 아코디언 없이 전부 펼침"이었으나, spec 결정 B가 아코디언으로 확정되었고
+     > **두 면의 상호작용이 다르면 학습이 두 번 필요하므로** 드로어도 아코디언을 그대로 쓴다.
+  3. 계정 섹션 `id="drawer-account" shrink-0 border-t border-subtle p-4`
+     `flex items-center gap-3` 아바타(`h-10 w-10`) + `flex min-w-0 flex-col`(이름 `text-body font-medium text-primary truncate` / `loginId` `text-caption text-muted truncate`)
+     그 아래 `mt-4` [로그아웃] `Button variant="secondary" fullWidth`
+- **상태별 / 동작**
+  | 상황 | 동작 |
+  |---|---|
+  | 열림 | `animate-slide-in-left`(240ms) + 백드롭 `animate-fade-in`. `body` 스크롤 잠금 |
+  | 초기 포커스 | `initialFocus='nav'`(햄버거 경유) → 닫기 버튼 / `'account'`(아바타 경유) → 계정 섹션 [로그아웃] |
+  | 닫힘 | 링크 선택 · 백드롭 클릭 · `Esc` · 닫기 버튼 · **라우트 변경**. 포커스는 트리거로 복귀 |
+  | 포커스 트랩 | 패널 내부 순환. 백드롭에는 포커스 가능 요소를 두지 않는다 |
+  | **뷰포트가 `≥lg`로 넓어짐** | **`open`을 강제로 `false`로 되돌린다.** 안 하면 다시 좁혔을 때 드로어가 열린 채 나타나고, `body` 스크롤 잠금이 남는다. 구현: `matchMedia("(min-width: 1024px)")` 리스너 |
+  | loading | 없음(메뉴는 정적) |
+- **반응형**: `<640` 사용 / `≥768` **계속 사용**(태블릿 세로 포함) / `≥1024` 렌더 안 함(`lg:hidden`).
+
+---
+
+#### 4.2.5 `AppShell` (조립)
+
+```
+<div class="min-h-screen bg-canvas">
+  <Sidebar/>
+  <MobileNavDrawer open={open} onClose={...}/>
+  <div class="lg:pl-sidebar">
+    <TopBar onOpenNav={...} onOpenAccount={...}/>
+    <main id="main-content" class="mx-auto w-full max-w-content px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+      {children}
+    </main>
+  </div>
+  <ToastViewport/>
+</div>
+```
+- `max-w-content` 자리는 페이지별로 `max-w-wide`가 될 수 있다 → `PageContainer`가 `maxWidth` prop으로 처리한다(기존 컴포넌트 재사용).
+- **`ToastViewport`는 `lg:pl-sidebar` 바깥**에 둔다. 토스트는 `fixed`이므로 사이드바 폭과 무관하게 뷰포트 우하단에 붙어야 한다.
+- Skip link는 `AppShell` 최상단 첫 자식으로 둔다(대상 `#main-content`).
+
+---
+
+### 4.3 `PageHeader`
+
+- **props**: `title: string`, `description?: string`, `actions?: ReactNode`, `backHref?: string`
+- **클래스**:
+  래퍼 `flex flex-col gap-3 md:flex-row md:items-end md:justify-between`
+  제목 `text-display lg:text-display-lg font-bold text-primary` (`<h1>`)
+  설명 `mt-1 text-caption md:text-body text-muted`
+  액션 `flex flex-col gap-2 sm:flex-row md:justify-end` — 자식 버튼은 모바일 `fullWidth`, `sm:w-auto`
+  `backHref` 있으면 제목 위에 `Button variant="link" size="sm"` "← 목록으로"
+- **반응형**: 모바일 세로 스택(액션 풀폭) / 태블릿·데스크탑 좌우 배치.
+
+---
+
+### 4.4 `Card`
+
+- **props**: `as?`, `padding?: 'none' | 'md'`, `elevation?: 'card' | 'raised'` (기본 `'card'`, **2026-08-01 추가**), `children`
+- **클래스**: `rounded-lg border border-subtle bg-surface` + `elevation` → `shadow-card` | `shadow-raised` + `padding='md'` → `p-4 md:p-6`
+- **그림자 계층 규칙 (화면이 평면적으로 보이지 않게 하는 유일한 장치 — 반드시 지킬 것)**
+
+| 층 | 그림자 | 대상 |
+|---|---|---|
+| 0 | 없음 | 카드 **안쪽** 요소(표, 안내 박스 `bg-surface-sunken`, 진행 막대 트랙) |
+| 1 | `shadow-card` | 일반 카드 — 폼 카드, 상세 카드, 대시보드 통계 3블록, KPI 4장 |
+| 2 | `shadow-raised` | **화면당 최대 2개.** 대시보드에서는 KPI `emphasis="primary"` 1장 + 등급분포 카드 |
+| 3 | `shadow-overlay` | 뷰포트 위에 뜨는 것 — 모달, 드로어 패널 |
+
+> `shadow-raised`를 남발하면 계층이 사라진다. 한 화면에서 3개 이상 쓰지 않는다.
+> 앱 셸(사이드바·상단바)은 그림자 대신 **경계선(`border-r`/`border-b border-subtle`)**으로만 구분한다.
+- **`CardHeader`**: `flex items-center justify-between gap-3 mb-4` / 제목 `text-section font-semibold text-primary`
+- 표를 담을 때는 `padding='none'`으로 두고 표가 카드 모서리에 붙게 한다(첫/마지막 셀 `first:rounded-tl-lg` 등은 쓰지 않고 `overflow-hidden`으로 처리).
+
+#### 4.4.1 `CardHeader` 확장 〔2026-08-01 개정 ② — 기존 컴포넌트 수정〕
+
+확장 분석 섹션은 제목 외에 **설명 1줄 + 기준선 문구 1줄 + 아이콘 + 배지**가 필요하다.
+`DashboardSection`이 자체 헤더를 따로 만들면 카드 제목 마크업이 두 벌이 되므로 **`CardHeader`를 확장한다.**
+
+| 추가 prop | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| `icon` | `ReactNode?` | — | 좌측 아이콘 슬롯. `grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface-sunken text-secondary md:h-10 md:w-10`, 아이콘 자체는 `h-5 w-5` |
+| `description` | `ReactNode?` | — | 제목 아래 1줄. `mt-1 text-caption text-muted` |
+| `badge` | `ReactNode?` | — | 제목 **오른쪽 인라인** 배지(예: `상세` / `요약`). `action`(우측 끝)과 자리가 다르다 |
+
+```html
+<div class="mb-4 flex items-start justify-between gap-3">
+  <div class="flex min-w-0 items-start gap-3">
+    <span aria-hidden="true" class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface-sunken text-secondary md:h-10 md:w-10">{icon}</span>
+    <div class="min-w-0">
+      <div class="flex flex-wrap items-center gap-2">
+        <h3 class="text-section font-semibold text-primary">{title}</h3>
+        {badge}
+      </div>
+      <p class="mt-1 text-caption text-muted">{description}</p>
+    </div>
+  </div>
+  <div class="shrink-0">{action}</div>
+</div>
+```
+
+- **하위 호환**: 3개 prop 모두 선택이므로 기존 호출부(`<CardHeader title=… />`)는 수정 없이 그대로 동작한다.
+- ⚠️ 기존 `items-center`를 **`items-start`로 바꾼다.** description이 붙으면 제목 줄이 2줄이 되어 세로 중앙 정렬이 어색해진다. 설명 없는 카드는 시각 차이가 없다.
+
+---
+
+### 4.5 `DataTable` — **이 프로젝트의 핵심 컴포넌트**
+
+- **목적**: 8개 화면의 표를 단일 구현으로 커버. 정렬 헤더·행 액션·스켈레톤·빈 상태·재조회 흐림·모바일 카드 스택을 모두 내장한다.
+- **props**
+
+| 이름 | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| `columns` | `Column<T>[]` | — | `{ key, header, align?, sortKey?, minWidthClass?, cell(row), mobilePriority? }` |
+| `rows` | `T[]` | — | |
+| `getRowKey` | `(row:T)=>string` | — | |
+| `mobile` | `'stack' \| 'scroll'` | `'stack'` | 「1.2 표 전략」 참조 |
+| `tableMinWidth` | `'table-sm' \| 'table-md' \| 'table-lg'` | `'table-sm'` | `≥md` 표의 최소폭 |
+| `sort` | `{ by?: string; order: 'ASC'\|'DESC' }` | — | |
+| `onSortChange` | `(key:string)=>void` | — | 없으면 정렬 UI 미표시 |
+| `state` | `'idle' \| 'loading' \| 'refetching' \| 'error' \| 'empty'` | `'idle'` | |
+| `skeletonRows` | `number` | `8` | |
+| `emptyState` | `ReactNode` | — | |
+| `onRowClick` | `(row:T)=>void` | — | 있으면 행 전체가 키보드 접근 가능해야 함 |
+| `rowActions` | `(row:T)=>ReactNode` | — | 수정/삭제 |
+| `stickyFirstColumn` | `boolean` | `false` | `/scores`에서 `true` |
+
+- **`≥md` 표 렌더**
+  - 래퍼: `Card padding="none"` → `<div class="scroll-x">` → `<table class="w-full min-w-table-lg border-collapse text-body md:text-body-sm">`
+  - `thead`: `bg-surface-sunken text-caption font-semibold text-secondary sticky top-0 z-raised` (긴 표에서 헤더 고정)
+  - `th`: `px-3 py-3 md:px-4 md:py-2 text-left align-middle whitespace-nowrap`
+    - 숫자 컬럼 `text-right tabular-nums`
+    - **정렬 가능 헤더**: `<button>`으로 감싼다.
+      `inline-flex min-h-touch md:min-h-0 items-center gap-1 rounded focus-ring hover:text-primary`
+      아이콘: 미정렬 `↕`(`text-muted`), ASC `↑`, DESC `↓` (`text-accent`) — **아이콘 + `aria-sort` 병행**(색 단독 금지).
+      `<th aria-sort="ascending|descending|none">`
+    - 정렬 불가 헤더는 버튼 없이 `<th>` 텍스트만.
+  - `tbody tr`: `border-t border-subtle` / `hover:bg-surface-hover` / `onRowClick` 있으면 `cursor-pointer` + 행 내 첫 셀에 `<Link>`를 두어 키보드 진입 보장(행 `div`에 `onClick`만 걸지 않는다).
+  - `td`: `px-3 py-3 md:px-4 md:py-3 align-middle text-primary`
+  - `stickyFirstColumn`: 첫 `th`/`td`에 `md:sticky md:left-0 md:z-raised bg-surface` (헤더는 `bg-surface-sunken`) + 우측 경계 `md:border-r md:border-subtle`
+- **`<md` 카드 스택 렌더 (`mobile='stack'`)**
+  - `<ul class="space-y-3">`, 각 항목:
+    `rounded-lg border border-subtle bg-surface p-4 shadow-card`
+  - 카드 상단: `mobilePriority: 'title'` 컬럼 값 = `text-body font-semibold text-primary`, 우측에 배지/액션.
+  - 카드 본문: 나머지 컬럼 전부를 `<dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">`
+    `<dt class="text-caption text-muted">헤더</dt><dd class="text-body text-primary tabular-nums">값</dd>`
+    - 값이 긴 컬럼(강의명 등)은 `col-span-2`.
+  - 액션: 카드 우상단 `⋯` 메뉴(44×44) 또는 카드 하단 `flex gap-2` 버튼 2개(`size="sm" fullWidth`). **`/lectures`·`/departments`·`/grade-scales`는 하단 버튼 2개 방식으로 통일**(메뉴 한 단계를 줄인다).
+- **상태별**
+  - `loading`: `≥md`는 `skeletonRows`개의 `<tr>`에 셀마다 `.skeleton h-4 w-full`; `<md`는 카드 3개 스켈레톤. 헤더는 실제 헤더를 그대로 보여준다.
+  - `refetching`: 기존 DOM 유지 + 표 래퍼에 `.is-refetching`, 상단에 얇은 진행 바 `h-0.5 w-full bg-accent animate-pulse`. **전체 스피너 금지.**
+  - `empty`: 표/카드 자리에 `EmptyState` (헤더는 유지).
+  - `error`: 표 자리에 `ErrorBanner variant="block"` + [다시 시도].
+- **반응형 요약**: 모바일 카드 스택 → `md` 표(가로 스크롤 가능, 첫 컬럼 고정 옵션) → `lg`/`xl` 여백 확대로 대부분 스크롤 소멸.
+
+---
+
+### 4.6 `Pagination`
+
+- **props**: `page`, `totalPages`, `total`, `pageSize?`, `onPageChange`, `onPageSizeChange?`, `pageSizeOptions?=[20,50,100]`
+- **클래스**: 래퍼 `mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between`
+  - 좌측 요약: `text-caption text-muted` — "총 {total}건 · {page}/{totalPages} 페이지"
+  - 버튼군: `flex items-center justify-center gap-1`
+    각 페이지 버튼 `inline-flex min-h-touch min-w-touch items-center justify-center rounded px-3 text-body md:min-h-0 md:h-control-dense md:min-w-0 focus-ring`
+    현재 페이지 `bg-accent text-on-accent font-semibold` + `aria-current="page"`
+    비활성(이전/다음 끝) `disabled:opacity-50 disabled:pointer-events-none`
+- **반응형**
+  - 모바일: [이전] [1/4] [다음] 3개만. 번호 목록 숨김(정보 손실 아님 — 현재/전체가 그대로 보인다).
+  - 태블릿(≥768): 번호 최대 5개(`hidden md:inline-flex`) + 첫/끝 생략기호.
+  - 데스크탑(≥1024): 번호 최대 7개 + `pageSize` 셀렉트 노출(`hidden lg:flex`). **모바일에서는 `pageSize`를 「표시 개수」 셀렉트로 필터 바 안에 넣어 접근 가능하게 유지한다.**
+- `totalPages`를 넘는 이동은 버튼 `disabled`로 원천 차단.
+
+---
+
+### 4.7 폼 요소
+
+#### `Field` (래퍼)
+
+- **props**: `label`, `htmlFor`, `required?`, `hint?`, `error?`, `children`
+- 클래스: `flex flex-col gap-1.5`
+  - `<label class="text-caption font-medium text-secondary">` + 필수 표시 `<span class="text-danger" aria-hidden="true">*</span>` + 라벨 텍스트에 "(필수)" 를 `sr-only`로 병행 (색·기호 단독 금지)
+  - `hint`: `text-caption text-muted`
+  - `error`: `flex items-start gap-1 text-caption text-danger-strong` + `⚠` 아이콘, `id={htmlFor + '-error'}`, `role="alert"`
+  - 에러 시 입력에 `aria-invalid="true" aria-describedby="<id>-error"`
+
+#### `TextInput` / `NumberInput` / `Select` / `FileInput`
+
+- **공통 base**: `w-full rounded border border-strong bg-surface px-3 text-body text-primary placeholder-muted min-h-touch transition-colors duration-fast focus-ring`
+  - **`text-body`(16px) 고정** — `md:`에서도 줄이지 않는다(iOS 확대 방지 + 입력 가독성).
+- 상태
+
+| 상태 | 클래스 |
+|---|---|
+| hover | `hover:border-accent` |
+| focus-visible | `.focus-ring` + `focus:border-accent` |
+| disabled | `disabled:bg-surface-sunken disabled:text-muted disabled:cursor-not-allowed` |
+| readOnly | `read-only:bg-surface-sunken read-only:text-secondary` |
+| error | `border-danger` (+ 하단 메시지, 아이콘 병행) |
+
+- `NumberInput`: `inputMode="numeric"`, `text-right tabular-nums`, min/max 속성 필수(점수 0~100, gpa ≥ 0).
+- `Select`: 네이티브 `<select>` 사용(모바일 네이티브 피커가 최선). `appearance-none` + 우측 `▾` 아이콘 `pointer-events-none absolute right-3`, `pr-10`.
+  - 로딩 중(`GET /lectures` 대기): `disabled` + 첫 옵션 "강의 목록을 불러오는 중…".
+  - 강의 옵션 라벨 형식: `자료구조 (2610)` — **강의명 + 학기 병기 필수**(수용 기준).
+- `FileInput` (= 드롭존)
+  - 클래스: `flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-strong bg-surface-sunken px-4 py-8 text-center transition-colors duration-fast`
+  - hover/드래그오버: `border-accent bg-accent-subtle`
+  - 내부: 아이콘 + `text-body text-secondary` "엑셀 파일을 끌어다 놓거나" + `Button variant="secondary" size="md"` [파일 선택] + `text-caption text-muted` ".xlsx, .xls 만 업로드할 수 있습니다."
+  - 실제 `<input type="file" accept=".xlsx,.xls" class="sr-only">` + `<label>` 연결.
+  - 선택 후: 드롭존이 파일 칩으로 바뀜 — `flex items-center gap-3 rounded-lg border border-subtle bg-surface p-4`, 파일명 `truncate text-body`, 크기 `text-caption text-muted`, 우측 [제거] `Button variant="ghost" size="sm"`(`min-h-touch`).
+  - 확장자 오류: 드롭존 `border-danger` + 하단 에러 메시지.
+- **폼 레이아웃 공통**
+  - `<form class="space-y-5">`, 필드 그리드 `grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5`
+  - 액션 바: `flex flex-col-reverse gap-2 border-t border-subtle pt-5 md:flex-row md:justify-end`
+    → 모바일에서 **주 버튼이 위**(`flex-col-reverse` + DOM 순서 취소·저장), 데스크탑에서 우측 정렬 취소·저장.
+  - 제출 중: 모든 필드 `disabled` + 주 버튼 `loading`, `<fieldset disabled>`로 일괄 잠금.
+
+---
+
+### 4.8 `Badge`
+
+- **props**: `tone: 'neutral' | 'accent' | 'success' | 'warning' | 'danger'`, `icon?`, `children`
+- base: `inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-caption font-semibold whitespace-nowrap`
+- tone: `neutral` `bg-surface-sunken text-secondary border border-subtle` / `accent` `bg-accent-subtle text-accent-strong` / `success` `bg-success-subtle text-success-strong` / `warning` `bg-warning-subtle text-warning-strong` / `danger` `bg-danger-subtle text-danger-strong`
+
+#### `GradeBadge` (등급 전용 파생)
+
+- **props**: `grade: string`, `gpa?: number`
+- **핵심 규칙**: 등급 문자(`A+`, `B0`, `F` …)를 **항상 텍스트로 표시**한다. 색은 보조 단서일 뿐이며, 색만으로 구분하지 않는다.
+- 매핑(첫 글자 기준, 서버가 임의 등급을 줄 수 있으므로 default는 `neutral`):
+
+| 등급 | tone | 아이콘(문자, `aria-hidden`) |
+|---|---|---|
+| `A*` | `success` | `▲` |
+| `B*` | `accent` | `◆` |
+| `C*` | `warning` | `●` |
+| `D*` | `warning` | `▽` |
+| `F` | `danger` | `✕` |
+| 그 외 | `neutral` | — |
+
+- `gpa`가 있으면 뒤에 `text-micro text-muted` 로 `4.5` 병기(`md:` 이상). 모바일에서는 `text-caption`으로 같은 정보를 다음 줄에 표시.
+- 스크린리더: `<span class="sr-only">등급 </span>A+` 형태로 의미 보강.
+
+---
+
+### 4.9 `ConfirmDialog` (삭제 확인)
+
+- **props**: `open`, `title`, `description`, `confirmLabel='삭제'`, `cancelLabel='취소'`, `tone='danger'`, `loading`, `onConfirm`, `onCancel`
+- 백드롭: `fixed inset-0 z-overlay bg-overlay/50 animate-fade-in`
+- 컨테이너: `fixed inset-0 z-modal flex items-end justify-center p-0 md:items-center md:p-4`
+- 패널: `w-full rounded-t-2xl bg-surface-raised p-5 shadow-overlay animate-slide-in-bottom md:max-w-modal md:rounded-xl md:p-6 md:animate-scale-in`
+  - 제목 `text-title font-semibold text-primary` (`id` → `aria-labelledby`)
+  - 설명 `mt-2 text-body text-secondary` (`id` → `aria-describedby`)
+  - 액션 `mt-6 flex flex-col-reverse gap-2 md:flex-row md:justify-end`
+    [취소] `secondary`, [삭제] `danger` + `loading`
+- `role="dialog" aria-modal="true"`, 포커스 트랩, 초기 포커스 = **취소** 버튼(파괴적 액션 오조작 방지), `Esc`로 닫힘, 배경 스크롤 잠금.
+- **반응형**: 모바일 바텀시트(하단 고정, 엄지 도달) / 태블릿·데스크탑 중앙 카드.
+
+---
+
+### 4.10 `Toast` + `ToastViewport`
+
+- **props**: `tone: 'success' | 'error' | 'info'`, `title`, `description?`, `action?`, `duration`
+- 규칙: **success/info = 3000ms 자동 소멸**, **error = 자동 소멸 없음(수동 닫기)**.
+- 뷰포트: `fixed inset-x-0 bottom-0 z-toast flex flex-col gap-2 p-4 md:inset-x-auto md:right-4 md:top-4 md:bottom-auto md:w-toast`
+- 아이템: `flex items-start gap-3 rounded-lg border bg-surface-raised p-4 shadow-raised animate-toast-in`
+  - tone별 좌측 아이콘 + 테두리: success `border-success text-success` / error `border-danger text-danger` / info `border-accent text-accent`
+  - 제목 `text-body font-semibold text-primary`, 설명 `mt-0.5 text-caption text-secondary`
+  - 닫기 버튼 `ml-auto min-h-touch min-w-touch` (`aria-label="알림 닫기"`)
+- 컨테이너 `role="region" aria-label="알림"`, 개별 토스트 `role="status"`(success/info) / `role="alert"`(error).
+- 최대 3개 동시 표시, 초과 시 가장 오래된 것부터 제거.
+- **반응형**: 모바일 하단 전체폭(제스처 도달) / `md` 이상 우상단 `w-toast`.
+
+---
+
+### 4.11 `AlertBanner` (폼 상단 / 페이지 배너)
+
+- **props**: `tone: 'error' | 'warning' | 'success' | 'info'`, `title`, `description?`, `action?`, `onDismiss?`
+- 클래스: `flex items-start gap-3 rounded-lg border p-4`
+  - error `border-danger bg-danger-subtle text-danger-strong`
+  - warning `border-warning bg-warning-subtle text-warning-strong`
+  - success `border-success bg-success-subtle text-success-strong`
+  - info `border-accent bg-accent-subtle text-accent-strong`
+- 좌측 아이콘 필수(색 외 단서), 제목 `text-body font-semibold`, 설명 `mt-1 text-caption`(모바일에서도 14px 유지 — 보조 텍스트).
+- 배치 규칙(spec 6절 매핑):
+  - **네트워크/5xx** → 본문 상단 `block` 배너 + [다시 시도]
+  - **폼 검증(필드 특정 가능)** → 배너 아님. 해당 필드 하단 인라인
+  - **폼 검증(필드 특정 불가, 400)** → 폼 **상단** 배너
+  - **목록 화면의 400/409** → 토스트
+  - **세션 만료(`reason=expired`)** → `/login` 폼 **위** `info` 배너
+
+---
+
+### 4.12 `EmptyState`
+
+- **props**: `icon` (**필수로 승격 — 2026-08-01**), `title`, `description?`, `action?`, `secondaryAction?`
+- 클래스: `flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-subtle bg-surface px-4 py-12 text-center md:py-16`
+  - **아이콘 자리(빈 상태/에러에 텍스트만 두지 않는다)**
+    `<span aria-hidden class="grid h-12 w-12 md:h-16 md:w-16 place-items-center rounded-full bg-surface-sunken text-muted">{icon}</span>`
+    - 톤: 일반 빈 상태 `bg-surface-sunken text-muted` / **에러 빈 상태** `bg-danger-subtle text-danger-strong` / 〔개정②〕 **좋은 소식인 빈 상태** `bg-success-subtle text-success-strong`
+      (prop `tone?: 'neutral' | 'danger' | 'positive'`, 기본 `'neutral'`)
+      > `positive`는 **위험군 학생 0명 전용**이다(4.29). "해당자가 없다"가 문제가 아니라 성과인 유일한 빈 상태다. 다른 곳에 쓰지 않는다 — 남용하면 "빈 상태 = 초록"이라는 잘못된 학습이 생긴다.
+    - 아이콘 자체는 `h-6 w-6 md:h-8 md:w-8` 인라인 SVG(4.2.0 규칙 동일). 일러스트 이미지 파일은 쓰지 않는다(다크모드 대응 비용).
+  - 제목 `text-section font-semibold text-primary`, 설명 `max-w-prose text-body text-muted`
+  - 액션 `mt-2 flex flex-col gap-2 sm:flex-row` — 버튼 모바일 `fullWidth`, `sm:w-auto`
+- 문구는 spec 6절 표를 **그대로** 사용한다.
+
+---
+
+### 4.13 `Skeleton`
+
+- 조각: `.skeleton` + 크기 유틸(`h-4 w-24`, `h-8 w-full`)
+- 프리셋
+  - `TableRowsSkeleton(rows, cols)` — `≥md` `<tr><td><div class="skeleton h-4 w-full"/>`
+  - `CardListSkeleton(count)` — `<md` 카드 3개
+  - `MetricCardsSkeleton` — 대시보드 KPI 5개
+  - `DetailSkeleton` — 라벨/값 6쌍
+  - `FormSkeleton` — 필드 3개
+- 스켈레톤 컨테이너에 `aria-busy="true"` + `<span class="sr-only">불러오는 중</span>`
+
+---
+
+### 4.14 `MetricCard` (대시보드 KPI) 〔2026-08-01 정보 밀도 보강〕
+
+> **단조로움 방지 체크리스트 대응.** 이전 판은 「라벨 + 숫자 + 힌트」 3줄뿐이라 5장이 같은 회색 덩어리로 보였다.
+> 아래처럼 **① 아이콘 슬롯 ② 시맨틱 톤 배정 ③ 그림자 계층 ④ 보조 설명 텍스트 ⑤ (해당 카드만) 만점 대비 진행 막대**를 더한다.
+
+#### ⚠️ 증감(전기 대비) 배지를 넣지 않는 이유 — 반드시 읽을 것
+
+참조 템플릿의 통계 카드는 `▲ 12.5%` 같은 **전월/전기 대비 증감 배지**를 갖는다. **이 프로젝트에는 넣지 않는다.**
+`GET /dashboard/summary`의 `DashboardSummaryDto`에는 `totalDepartments` · `totalLectures` · `totalStudentScores` ·
+`averageTotalScore` · `averageGpa`만 있을 뿐 **비교 기준이 되는 과거 값이 전혀 없다**(spec 5절 확인).
+백엔드 변경도 이번 범위가 아니다. 없는 데이터를 지어내거나 "—%" 같은 빈 배지 자리를 남기지 않는다.
+**대신** 리치함은 아이콘 톤 다양화 + 그림자 계층 + 실제 데이터로 계산 가능한 진행 막대로 표현한다.
+(증감값을 주는 API가 생기면 `delta` prop과 `Badge tone="success|danger"`를 이 자리에 추가하면 된다.)
+
+- **props**
+
+| 이름 | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| `label` | `string` | — | 지표명 |
+| `value` | `string \| number` | — | 이미 포맷된 값(천단위 구분·소수 자릿수는 호출부 책임) |
+| `unit` | `string?` | — | `개` `건` `점` 등 |
+| `hint` | `string?` | — | **보조 설명 1줄.** 데이터가 아니라 지표의 정의를 설명하는 정적 문구 |
+| `icon` | `ReactNode` | — | `h-5 w-5` 인라인 SVG (4.2.0의 아이콘 규칙 동일) |
+| `tone` | `'neutral' \| 'accent' \| 'success'` | `'neutral'` | 아이콘 슬롯 톤 |
+| `emphasis` | `'default' \| 'primary'` | `'default'` | 카드 계층 |
+| `max` | `number?` | — | 주어지면 `value/max` 진행 막대를 렌더 |
+| `isLoading` | `boolean` | `false` | 스켈레톤 |
+
+- **구조 / 클래스**
+
+```
+<Card padding="md" class="{emphasis 클래스} relative overflow-hidden">
+  <div class="flex items-start gap-4">
+    <!-- ① 아이콘 슬롯 -->
+    <span aria-hidden class="grid h-10 w-10 md:h-12 md:w-12 shrink-0 place-items-center rounded-lg {tone 클래스}">
+      {icon}
+    </span>
+    <div class="min-w-0 flex-1">
+      <p class="text-caption font-medium text-muted">{label}</p>
+      <p class="mt-1 flex items-baseline gap-1">
+        <span class="text-metric lg:text-metric-lg font-bold text-primary tabular-nums">{value}</span>
+        <span class="text-body font-medium text-muted">{unit}</span>
+      </p>
+    </div>
+  </div>
+  <!-- ⑤ 만점 대비 막대: max 가 있을 때만. 지어낸 값이 아니라 value/max 계산값이다 -->
+  <div aria-hidden class="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
+    <div class="h-full rounded-full bg-success" style={{ width: `${(value/max)*100}%` }}/>
+  </div>
+  <!-- 채움색은 bg-success 고정. max 를 쓰는 카드(#4·#5)가 모두 tone='success' 이므로
+       'bg-{tone}' 같은 동적 클래스 조합을 만들지 않는다 (Tailwind가 스캔하지 못한다). -->
+  <!-- ④ 보조 설명 -->
+  <p class="mt-3 text-caption text-muted">{hint}</p>
+</Card>
+```
+
+- **variant — `tone` (아이콘 슬롯)**
+
+| tone | 클래스 | 배정 의미 |
+|---|---|---|
+| `neutral` | `bg-surface-sunken text-secondary` | **기준정보성 지표** (마스터 데이터) |
+| `accent` | `bg-accent-subtle text-accent-strong` | **운영 규모 지표** (얼마나 쌓였는가) |
+| `success` | `bg-success-subtle text-success-strong` | **품질/평균 지표** (얼마나 잘 나왔는가) |
+
+> **`warning` / `danger` 톤을 KPI 아이콘에 쓰지 않는다.** 두 톤은 이 디자인 시스템에서 "확인 필요/실패"라는
+> 상태 의미를 이미 갖고 있다(에러 배너, F등급, 삭제 버튼). 중립적인 집계 숫자에 붙이면 **"평균 GPA에 문제가 있다"로 오독된다.**
+> 알록달록함보다 의미 일관성이 우선이다. 색은 어차피 3번째 단서일 뿐이고, 카드 구분은 아이콘 글리프와 라벨이 먼저 한다.
+
+- **variant — `emphasis` (그림자 계층)**
+
+| emphasis | 클래스 | 용도 |
+|---|---|---|
+| `default` | `shadow-card` (Card 기본) | 나머지 4장 |
+| `primary` | `shadow-raised` + 아이콘 슬롯을 솔리드로 승격(`bg-accent text-on-accent`) + 값 `text-primary` 유지 | **이 화면의 주인공 1장만.** 「성적 건수」 = 이 시스템의 핵심 산출물 |
+
+> 5장이 전부 `shadow-card`면 화면이 평면적이다. **정확히 1장만** `shadow-raised`로 띄워 시선의 시작점을 만든다.
+> 2장 이상 승격하면 계층이 사라지므로 금지.
+
+- **5개 카드 배정표 (이대로 구현할 것)**
+
+| # | label | DTO 필드 | unit | tone | emphasis | max | hint (정적 문구) |
+|---|---|---|---|---|---|---|---|
+| 1 | 학과 | `totalDepartments` | `개` | `neutral` | default | — | 성적 등록에 사용되는 기준 학과 |
+| 2 | 수강과목 | `totalLectures` | `개` | `accent` | default | — | 등록된 전체 강의 |
+| 3 | 성적 건수 | `totalStudentScores` | `건` | `accent` | **primary** | — | 엑셀로 업로드된 학생 성적 행 |
+| 4 | 평균 합계점수 | `averageTotalScore` | `점` | `success` | default | `100` | 100점 만점 기준 전체 평균 |
+| 5 | 평균 평점 | `averageGpa` | — | `success` | default | `4.5` | 4.5 만점 기준 전체 평균 |
+
+- **상태별 스타일**
+
+| 상태 | 처리 |
+|---|---|
+| default | 위 |
+| hover | **없음.** 클릭 불가한 표시 전용 카드다. hover 반응은 "누를 수 있다"는 거짓 신호가 된다 |
+| focus-visible | 없음(포커스 대상 아님) |
+| loading | 아이콘 자리 `.skeleton h-10 w-10 md:h-12 md:w-12 rounded-lg`, 라벨 `.skeleton h-4 w-16`, 값 `.skeleton h-8 w-24`, 힌트 `.skeleton h-4 w-32`. **카드 높이·그림자는 유지**해 레이아웃 점프를 막는다. 컨테이너 `aria-busy="true"` |
+| error | 개별 카드 에러 없음. `/dashboard/summary` 실패는 페이지 단위 `AlertBanner tone="error"`로 처리 |
+| 값 없음 | 서버가 항상 required로 주므로 미대응. 방어적으로 `0` 표시(`—` 아님 — 0건은 실제 정보다) |
+
+- **접근성**
+  - 아이콘 슬롯·진행 막대는 `aria-hidden`. **정보는 전부 텍스트로도 존재한다**(값 + 단위 + hint).
+  - `max`가 있는 카드의 막대가 유일한 정보원이 되지 않도록 hint에 만점을 문자로 적는다("4.5 만점 기준").
+  - 카드 라벨은 `<p>`, 지표 묶음은 `<li>`로 감싸 `<ul class="grid ...">` 안에 둔다(개수 인식 가능).
+
+- **반응형**
+
+| | 모바일 (<640) | 태블릿 (≥768) | 데스크탑 (≥1024) |
+|---|---|---|---|
+| 그리드 | `grid-cols-1 gap-3` | `sm:grid-cols-2 md:grid-cols-3 gap-4` | `lg:grid-cols-5 gap-6` |
+| 아이콘 슬롯 | `h-10 w-10` | `md:h-12 md:w-12` | `md:h-12 md:w-12` |
+| 값 | `text-metric` (28) | `text-metric` | `lg:text-metric-lg` (36) |
+| 배치 | 아이콘 좌 / 텍스트 우 (가로) — 카드가 세로로 길어지지 않게 | 동일 | 동일 |
+| `emphasis="primary"` | `md:grid-cols-3`에서 3번째 = 첫 행 끝. 순서를 바꾸지 않는다(DOM 순서 = 시각 순서) | 동일 | `lg:grid-cols-5` 한 줄 |
+
+> ⚠️ `lg:grid-cols-5`에서 카드 1장 폭 ≈ (메인 컬럼 − 사이드바) / 5. **사이드바 도입으로 이전보다 좁아졌다.**
+> 1280px 뷰포트 기준 카드 폭 ≈ 175px이므로 `text-metric-lg`(36px) + 아이콘(48px)이 겹칠 수 있다.
+> → 값 컨테이너에 `min-w-0`, 값에 `tabular-nums` + 줄바꿈 금지 대신 **`break-normal` 유지**, 라벨은 `truncate` 금지(2줄 허용).
+> 실제로 좁으면 `lg:grid-cols-5`를 `lg:grid-cols-3 xl:grid-cols-5`로 낮춘다. **이 판단은 1280px 실측 후 결정할 것.**
+
+---
+
+### 4.15 등급분포 카드 — `GradeDistributionPanel` (콤보 차트 + 막대 리스트 2분할) 〔2026-08-01 계층 보강 → 2분할 개정 → **콤보 차트 개정**〕
+
+> **개정 배경 ①(2분할).** "성적분포는 절반으로 나눠서 막대그래프와 차트로 구분해서 만들어" 요구에 따라,
+> 하나였던 등급분포 카드 내부를 **같은 데이터(`gradeDistribution`)를 두 가지로 보여주는 2분할**로 바꿨다.
+>
+> **개정 ②(콤보 차트, 이번 판).** "도넛차트말고 세로 막대그래프와 라인차트를 같이 표시해" 요구에 따라
+> **좌(또는 위) 반쪽의 도넛(`GradeDonutChart`)을 폐기**하고 **막대+라인 콤보 차트(`GradeComboChart`)** 로 교체한다.
+> **2분할 레이아웃 자체(좌 차트 / 우 막대 리스트, `lg:grid-cols-2`, `<lg` 세로 스택, 분할선 방향)는 이전 판 결정을 그대로 유지**하고,
+> 바뀐 것은 "좌 반쪽에 무엇이 들어가는가" 하나뿐이다.
+> - 좌(또는 위) = **분포의 형태** — `GradeComboChart` (4.15.2, 도넛 대체)
+> - 우(또는 아래) = **등급별 정확한 수치** — `DistributionBar` (4.15.1, 변경 없음)
+>
+> **차트 라이브러리는 여전히 도입하지 않는다.** 아이콘을 외부 라이브러리 없이 인라인 SVG로 만든 전례(`components/ui/icons.tsx`)와 같은 원칙으로,
+> 콤보 차트는 `<rect>`(막대) + `<polyline>`(라인) + `<circle>`(마커) + `<line>`(그리드) 만으로 그린다. §8 참고.
+>
+> **폐기 처리 안내(frontend-dev 필독).** 이전 판을 보고 이미 `components/data/GradeDonutChart.tsx`를 만들었다면 **파일째 삭제**한다.
+> 도넛 전용 상수(`RADIUS 15.9155`, `STROKE`, `GAP`, `MIN_ARC`)와 `RING_STROKE_BY_TONE` 맵, `maxWidth.donut` 토큰은 **어디에도 남기지 않는다.**
+> 남은 채로 두면 "쓰이지 않는 두 번째 색 매핑"이 생겨 이후 색이 갈라지는 원인이 된다.
+
+#### 4.15.0 카드 컨테이너와 2분할 레이아웃
+
+- **컴포넌트 경계**
+  | 컴포넌트 | 역할 | 파일(제안) |
+  |---|---|---|
+  | `GradeDistributionPanel` | 카드 + 헤더 배지 + 2분할 그리드 + **빈/로딩 상태의 단일 판정자** | `components/data/GradeDistributionPanel.tsx` |
+  | `GradeComboChart` | 요약 헤드라인 + 축(y/x) + 막대·라인 SVG + 범례 | `components/data/GradeComboChart.tsx` |
+  | `DistributionBar` | 가로 막대 리스트 (기존 파일 유지) | `components/data/DistributionBar.tsx` |
+  > 두 자식은 **자기 자신의 빈 상태를 렌더하지 않는다.** 빈 상태가 반쪽에 2번 나오면 화면이 망가진다.
+  > `items.length === 0 || totalCount === 0` 판정은 `GradeDistributionPanel`이 **한 번만** 하고, 이때 2분할 그리드 자체를 렌더하지 않고 카드 폭 전체에 빈 상태 1개를 둔다.
+  > (기존 `DistributionBar` 안의 `EmptyDistribution`은 `GradeDistributionPanel`로 **끌어올린다**. 이름은 `DistributionEmptyState`로 바꾸고 export 한다.)
+
+- **props (`GradeDistributionPanel`)**
+
+| 이름 | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| `items` | `GradeDistributionItemDto[]` | (필수) | `DashboardSummaryDto.gradeDistribution` 원본. **가공해서 넘기지 않는다** |
+| `isLoading` | `boolean` | `false` | 스켈레톤 표시 |
+
+- **카드 계층**: 이 블록은 대시보드에서 KPI 다음가는 주역이므로 감싸는 `Card`에 **`shadow-raised`**를 준다.
+  나머지 카드(확장 분석 8개 섹션 + 그룹 E의 요약 3블록)는 전부 `shadow-card`로 두어 **2단 계층**을 만든다.
+  → KPI `primary` 1장(raised) → 등급분포(raised) → **나머지 카드 전부(card)** → 표 내부(그림자 없음).
+  〔개정②〕 섹션이 11개가 되어도 **`shadow-raised`는 여전히 이 2장뿐**이다(4.4의 "화면당 raised 최대 2개"). 세로 리듬은 그림자가 아니라 **그룹 제목 + 구분선**이 만든다(1.3.2).
+  **2분할이 되어도 카드는 여전히 1장이다.** 반쪽마다 카드를 만들지 않는다(raised가 3개가 되어 4.4의 "화면당 raised 최대 2개" 규칙을 깬다).
+- **카드 헤더** (`CardHeader`): 제목 "등급 분포" + 우측 요약 배지 2개 — **모두 `items`에서 계산되는 값이며 지어낸 수치가 아니다.**
+  - `Badge tone="neutral"` `총 {sum(count)}명`
+  - `Badge tone="accent"` `최다 {최댓값 등급}` (동률이면 첫 번째. `items`가 비면 둘 다 렌더하지 않음)
+  - 헤더는 **분할선 위쪽 공통 영역**이다. 반쪽마다 제목을 달지 않고, 대신 각 반쪽 상단에 `sr-only` 소제목만 둔다
+    (`<h3 class="sr-only">등급별 인원수와 비율 그래프</h3>` / `<h3 class="sr-only">등급별 인원 목록</h3>`) — 시각적으로는 그래프·목록 형태 자체가 구분자다.
+
+- **분할 구조** (카드 본문 `CardBody`)
+
+```
+┌ Card (shadow-raised) ─────────────────────────────────────────────┐
+│ CardHeader:  등급 분포            [총 128명] [최다 A+]            │
+├───────────────────────────────────────────────────────────────────┤
+│  ┌── 절반 1: GradeComboChart ──┬── 절반 2: DistributionBar ────┐  │
+│  │  34.2%  최다 A+ 비중         │  [A+] ████████████░░  34.2%   │  │
+│  │  44┤ ▂▂                     │  [A0] ██████████░░░░  27.3%   │  │
+│  │    ┼ ██ ▂▂ ──────  ← 라인(%) │  [B+] ███████░░░░░░░  18.0%   │  │
+│  │  22┼ ██ ██ ▂▂ ●─●           │  [C0] ████░░░░░░░░░░  12.5%   │  │
+│  │    ┼ ██ ██ ██ ▂▂ ▂▂         │  [F ] ██░░░░░░░░░░░░   8.0%   │  │
+│  │   0└ ██ ██ ██ ██ ██         │                               │  │
+│  │      A+ A0 B+ C0 F          │  (lg: 좌측 border-l 로 분리)   │  │
+│  │  ▮▮▮ 인원수(명)  ─●─ 비율(%) │                               │  │
+│  └─────────────────────────────┴───────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+- **왜 차트가 먼저(좌/위)인가**: 카드 헤더의 요약 배지 → 콤보 차트(분포의 형태를 한눈에) → 막대 리스트(등급별 정확한 값) 순서가
+  **"요약 → 상세" 한 방향 흐름**이 된다. 모바일 세로 스택에서도 같은 순서라 **DOM 순서 = 시각 순서 = 낭독 순서**가 전 구간에서 일치한다
+  (`order-*` 로 순서를 뒤집는 처리는 쓰지 않는다).
+- **분할 컨테이너 클래스**
+
+| 파트 | 클래스 |
+|---|---|
+| 그리드 | `grid grid-cols-1 gap-5 lg:grid-cols-2 lg:items-center lg:gap-6` |
+| 절반 1 (콤보 차트) | `flex min-w-0 flex-col gap-4` — 도넛 시절의 `items-center`는 **뺀다.** 차트가 반쪽 폭을 100% 쓰므로 중앙정렬할 잔여 폭이 없고, `min-w-0`이 없으면 SVG가 그리드 트랙을 밀어낸다 |
+| 절반 2 (막대) | `min-w-0 border-t border-subtle pt-5 lg:border-t-0 lg:border-l lg:border-subtle lg:pt-0 lg:pl-6` |
+
+  > 분할선은 **모바일=가로선(`border-t`), 데스크탑=세로선(`border-l`)** 으로 방향만 바뀐다. 선은 `border-subtle` 하나만 쓴다.
+  > 절반 2에 `min-w-0`이 없으면 막대의 `flex-1`이 그리드 트랙을 밀어 **카드가 가로로 넘친다.** 필수.
+  > `lg:items-center`는 등급이 3개 이하일 때 막대 리스트가 짧아져 차트와 높이가 어긋나는 것을 보정한다.
+
+- **상태별 (카드 단위 — 판정은 여기서만 한다)**
+
+| 상태 | 처리 |
+|---|---|
+| default | 위 2분할 |
+| **loading (`isLoading`)** | 2분할 그리드는 **그대로 유지**하고 양쪽을 각각 스켈레톤으로 채운다(레이아웃이 튀지 않게). 좌: 헤드라인 자리 `.skeleton h-8 w-32` + 플롯 자리 `<div class="skeleton h-chart w-full rounded-lg md:h-chart-lg">` + x축 라벨 자리 `.skeleton h-4 w-full` + 범례 자리 `.skeleton h-4 w-40`. 우: 행 5개 — 배지 자리 `.skeleton h-6 min-w-touch` + 막대 자리 `.skeleton h-2 w-full`. 헤더 배지 자리 `.skeleton h-6 w-20` 2개 |
+| **empty (`items.length === 0 \|\| totalCount === 0`)** | **2분할을 렌더하지 않는다.** 카드 본문 전체에 빈 상태 1개 — `flex flex-col items-center gap-2 py-10 text-center` + 아이콘 자리 `<span aria-hidden class="grid h-12 w-12 place-items-center rounded-full bg-surface-sunken text-muted"><ChartIcon class="h-6 w-6"/></span>` + 제목 `text-body font-medium text-secondary` "아직 등급 데이터가 없습니다" + 설명 `text-caption text-muted` "성적을 업로드하면 등급 분포가 표시됩니다." + `Button variant="secondary" size="sm"` [성적 업로드하러 가기] → `/scores/upload`. 이때 **헤더 요약 배지도 렌더하지 않는다**(값이 없다) |
+| error | 페이지 단위 `AlertBanner tone="error"`로 처리(카드 개별 에러 없음) |
+| hover / focus-visible / active / disabled | 카드 자체는 인터랙티브하지 않다. 유일한 hover는 막대 리스트의 행 배경(4.15.1) |
+
+  > `totalCount === 0`(항목은 있는데 인원이 전부 0)을 빈 상태에 포함시키는 이유: 차트의 `maxCount`가 0이 되어 **막대 높이가 0/0(`NaN`)** 이 되고,
+  > 라인도 전부 0% 바닥에 붙은 직선이 되며, 막대 리스트도 전부 0%라 **읽을 것이 없는 화면**이 된다.
+  > 판정을 한 곳에 모아 두 표현이 동시에 같은 결론을 내게 한다. → **`GradeComboChart`는 "`items`가 1개 이상이고 합계 count > 0"을 부모가 보장한 상태로만 렌더된다.**
+
+- **정보 밀도 점검(단조로움 방지 체크리스트)**: 이 카드는 숫자 나열이 아니다 —
+  헤더 요약 배지 2개 + 세로 막대(형태) + 겹친 비율 라인 + 마커 + y/x축 눈금 + 차트 요약 헤드라인 + 범례 + 등급 배지(글리프 포함) + 가로 막대 + 수치 텍스트의 **10종 레이어**를 갖는다.
+  아이콘 슬롯은 **빈 상태에만** 둔다(정상 상태에서 차트 자체가 시각 오브젝트이므로 아이콘을 추가하면 과밀해진다 — 의도적 생략).
+
+---
+
+#### 4.15.1 `DistributionBar` (절반 2 — 가로 막대 리스트) 〔2026-08-01 개정 ② — **시그니처 일반화**〕
+
+> **왜 고치는가.** 이번 라운드에서 **같은 모양의 가로 막대 리스트가 3곳**에 필요해졌다 —
+> 등급 분포(기존) / 점수 구간 분포(4.22.2) / 평가항목 4개 평균(4.26.2).
+> 현재 시그니처는 `GradeDistributionItemDto`(등급·인원·비율)와 `getGradeTone`에 **결합되어 있어 그대로 못 쓴다**(spec 8.1이 지적한 지점).
+> 두 번째 막대 컴포넌트를 만들면 "시각적으로 같은데 다른 물건"이 생기고 이후 색이 갈라진다. → **기존 컴포넌트를 일반화한다.**
+
+- **새 props (일반화)**
+
+```ts
+export interface DistributionBarItem {
+  /** React key */
+  key: string;
+  /** 좌측 라벨 슬롯. GradeBadge · Badge · 텍스트 칩 무엇이든 온다 */
+  label: ReactNode;
+  /**
+   * 막대 채움 **폭 비율**(0~100).
+   * ⚠️ "비율(%) 값"이 아니라 폭이다. 만점 정보가 없는 평가항목(4.26)에서는
+   *    「4개 항목 중 최댓값 = 100」인 **상대 폭**으로 쓰며, 이때 화면에 %를 절대 출력하지 않는다.
+   */
+  fillRatio: number;
+  /** 우측 수치 텍스트. **이 텍스트가 유일한 정보 전달자**다(막대는 aria-hidden) */
+  valueText: string;
+  /** 막대 색 톤. 호출부가 정한다 */
+  tone: BadgeTone;
+  /** 최댓값 행 강조(색 외 단서 = 굵기) */
+  emphasized?: boolean;
+}
+interface DistributionBarProps { items: DistributionBarItem[] }
+```
+
+- **호출부 매핑 (3곳 전부 이 표대로)**
+
+| 사용처 | `label` | `fillRatio` | `valueText` | `tone` | `emphasized` |
+|---|---|---|---|---|---|
+| 등급 분포 (4.15) | `<GradeBadge grade={grade}/>` | `percentage` | `12명 (24.5%)` | `getGradeTone(grade)` | 최다 등급 |
+| 점수 구간 분포 (4.22.2) | `<Badge tone="neutral">{bucket.label}</Badge>` | `percentage` | `12명 (24.5%)` | **`"accent"` 고정** | 최다 구간 |
+| 평가항목 평균 (4.26.2) | `<Badge tone="neutral">중간고사</Badge>` | `value / max(4개 값) × 100` | `24.3점` (**%를 쓰지 않는다**) | **`"accent"` 고정** | 최고 항목 |
+
+  > 점수 구간·평가항목에 **등급 톤(success/warning/danger)을 쓰지 않는 이유**: 등급은 그 자체가 평가 결과라 warning/danger가 정당하지만(4.15.1 기존 근거),
+  > "70~79점 구간"이나 "중간고사"는 좋고 나쁨이 없는 **중립 분류**다. 여기에 danger를 칠하면 "이 구간은 나쁘다"는 없는 의미가 생긴다. → 단색 `accent`.
+
+- **마이그레이션 체크 (기존 등급분포 회귀 방지)**
+  - `summarizeGradeDistribution`으로 최다 등급을 고르던 로직이 **컴포넌트 안 → 호출부(`GradeDistributionPanel`)** 로 올라간다.
+    패널은 이미 헤더 배지 때문에 이 함수를 호출하고 있으므로 **호출이 늘지 않고 오히려 1회로 줄어든다.**
+  - `BAR_FILL_BY_TONE`(`bg-*` 정적 맵)은 **그대로 남긴다.** 톤 → 클래스 매핑은 여전히 컴포넌트 책임이다.
+  - `GradeBadge`를 감싸던 `min-w-touch shrink-0 justify-center` 정렬 래퍼도 **컴포넌트가 계속 갖는다**(라벨이 무엇이든 좌측 폭이 맞아야 막대 시작선이 정렬된다).
+
+- **구조**: `<ul class="space-y-1">` 각 행 `<li>`
+
+```
+group flex items-center gap-3 rounded-md -mx-2 px-2 py-2
+transition-colors duration-fast ease-standard hover:bg-surface-hover
+```
+| 파트 | 클래스 |
+|---|---|
+| `GradeBadge` | `min-w-touch shrink-0 justify-center` (고정 px 금지 → `min-w-touch`로 정렬을 맞춘다) |
+| 막대 트랙 | `h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-sunken` |
+| 막대 채움 | `h-full rounded-full bg-{등급 tone}` + `style={{ width: `${percentage}%` }}` — **폭만 데이터, 색·모양은 토큰**(허용된 유일한 인라인 스타일) |
+| 수치 | `shrink-0 text-caption tabular-nums text-secondary` — `12명 (24.5%)` |
+
+- **막대 색 = `GradeBadge` 톤과 동일 매핑** (A→`bg-success`, B→`bg-accent`, C·D→`bg-warning`, F→`bg-danger`, **그 외(neutral)→`bg-accent`**).
+  > `bg-border-strong` 같은 클래스는 **존재하지 않는다.** `border-subtle`/`border-strong`은 `borderColor`에만 등록되어 있어 `bg-*`로 쓸 수 없다. 배경이 필요하면 `colors`에 등록된 이름(`surface*`, `accent*`, `success*`, `warning*`, `danger*`, `skeleton`, `canvas`, `overlay`)만 쓴다.
+  전부 `bg-accent`였던 이전 판보다 리듬이 생기고, **배지와 막대가 같은 색이라 시선이 행 단위로 묶인다.**
+  여기서는 warning/danger가 정당하다 — **등급 자체가 이미 평가 결과**이기 때문이다(KPI 카드와의 차이).
+- 최다 등급 행: 수치 텍스트에 `font-semibold text-primary` (색 외 단서). 색으로만 강조하지 않는다.
+- 막대는 `aria-hidden`. **수치 텍스트가 유일한 정보 전달자**다.
+- **상태별**
+  | 상태 | 처리 |
+  |---|---|
+  | default | 위 |
+  | hover(행) | `hover:bg-surface-hover` — 읽는 줄을 잃지 않게 하는 용도. 클릭 동작은 없다 |
+  | focus-visible / active / disabled | **해당 없음.** 행은 인터랙티브 요소가 아니다(클릭·포커스 대상 아님). 그래서 `.focus-ring`을 붙이지 않는다 |
+  | loading | 부모(`GradeDistributionPanel`)가 처리 — 4.15.0 로딩 참고. 이 컴포넌트는 로딩을 모른다 |
+  | empty | 부모가 처리(반쪽마다 빈 상태를 만들지 않는다) |
+  | error | 페이지 단위 배너로 처리(카드 개별 에러 없음) |
+
+---
+
+#### 4.15.2 `GradeComboChart` (절반 1 — 순수 SVG 막대+라인 콤보) 〔2026-08-01 콤보 개정 — `GradeDonutChart` 폐기 대체〕
+
+- **목적**: 같은 `gradeDistribution`을 **"이 강의 성적이 어느 쪽으로 쏠려 있나"** 라는 한 장의 형태로 보여준다.
+  막대 리스트가 "값을 읽는 도구"라면 콤보 차트는 "모양을 보는 도구"다. 두 반쪽은 **서로를 대체하지 않는다.**
+
+- **가정 — 라인이 무엇을 잇는가 (frontend-dev·리뷰어 필독)**
+  `DashboardSummaryDto.gradeDistribution`은 `{ grade, count, percentage }[]` **뿐이고 시계열(날짜/학기별 추이) 데이터가 없다.**
+  따라서 "라인차트"를 **시간 축**으로 해석하는 것은 **데이터상 불가능**하다. 이 명세는 다음 해석으로 진행한다.
+
+  | 축 | 대상 | 스케일 |
+  |---|---|---|
+  | x축 (공통) | **등급** `A+ · A0 · B+ … F` — `items` 배열 **순서 그대로**(서버 정렬을 신뢰한다. 프런트에서 재정렬하지 않는다) | 균등 밴드 |
+  | y축 좌 (막대) | **인원수 `count`** | `0 ~ maxCount`(데이터에 맞춰 자동 확대) |
+  | y축 우 (라인, **라벨 없는 보조축**) | **비율 `percentage`** | **`0 ~ 100` 고정** |
+
+  > **두 계열이 왜 같은 모양이 아닌가.** `percentage = count / total × 100`이므로 원본 값은 비례한다.
+  > 그러나 **막대는 `maxCount`에 맞춰 자동 확대(최다 등급이 항상 천장에 닿는다)** 되고 **라인은 0~100% 절대 스케일**이므로
+  > 화면상 두 계열의 기울기와 높이가 다르게 나타난다. 즉 **막대 = "등급들끼리의 상대 비교", 라인 = "전체에서 차지하는 절대 비중"** 을 각각 읽게 된다.
+  > (라인도 `maxPercentage`로 자동 확대하면 막대와 **픽셀 단위로 동일한 그래프 2개**가 겹쳐 무의미해진다 — 그래서 고정 0~100을 쓴다.)
+
+- **props**
+
+| 이름 | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| `items` | `GradeDistributionItemDto[]` | (필수) | 부모가 `length > 0` **그리고** 합계 `count > 0`을 보장한 배열 |
+| `topGrade` | `{ grade: string; percentage: number } \| null` | `null` | 헤드라인용 최다 등급. **부모가 헤더 배지와 같은 `summarizeGradeDistribution` 결과를 내려준다**(판정 로직을 두 번 쓰지 않는다). `null`이면 헤드라인을 렌더하지 않는다 |
+| `className` | `string` | `undefined` | 배치용 여백만. 색/크기 클래스는 넘기지 않는다 |
+
+  > variant / size 는 **두지 않는다.** 이 차트는 대시보드 1곳에서만 쓰이고, 크기는 `w-full` + `h-chart`/`md:h-chart-lg`로만 결정된다.
+  > 두 번째 사용처가 생기면 그때 `size` prop을 만든다(지금 만들면 죽은 API가 된다).
+
+- **전체 DOM 구조** (SVG는 "플롯 영역"만 그린다. 축 라벨·헤드라인·범례는 전부 **HTML**이다)
+
+```html
+<figure class="flex min-w-0 flex-col gap-3">
+  <figcaption class="sr-only">…(접근성 항목 참고)…</figcaption>
+
+  <!-- ① 요약 헤드라인 — 도넛 중앙 라벨이 갖고 있던 정보를 그대로 승계 -->
+  <p class="flex items-baseline gap-2">
+    <span class="text-title font-semibold tabular-nums text-primary lg:text-display">34.2%</span>
+    <span class="text-caption text-muted">최다 A+ 비중</span>
+  </p>
+
+  <!-- ② 축 + 플롯: 1열=y축 눈금(내용폭), 2열=플롯 / 2행 2열=x축 라벨 -->
+  <div class="grid grid-cols-chart-axis gap-x-2 gap-y-1">
+    <!-- y축 눈금(인원수). aria-hidden — 같은 값이 오른쪽 목록에 텍스트로 있다 -->
+    <ul aria-hidden="true"
+        class="flex h-chart flex-col justify-between text-micro leading-none tabular-nums text-muted md:h-chart-lg">
+      <li class="-my-1.5 text-right">12</li>
+      <li class="-my-1.5 text-right">8</li>
+      <li class="-my-1.5 text-right">4</li>
+      <li class="-my-1.5 text-right">0</li>
+    </ul>
+
+    <!-- 플롯: 폭은 100%, 높이만 토큰 고정. overflow-visible = 상단 마커가 잘리지 않게 -->
+    <svg viewBox="0 0 320 160" preserveAspectRatio="none"
+         class="h-chart w-full overflow-visible md:h-chart-lg"
+         aria-hidden="true" focusable="false"> … </svg>
+
+    <!-- 2행 1열: 빈 칸(y축 라벨 열 자리 유지) -->
+    <div aria-hidden="true"></div>
+
+    <!-- x축 라벨(등급). auto-cols-fr 로 SVG 밴드와 폭이 정확히 일치한다 -->
+    <ul aria-hidden="true" class="grid auto-cols-fr grid-flow-col">
+      <li class="min-w-0 truncate px-0.5 text-center text-micro font-medium text-secondary sm:text-caption">A+</li>
+      …
+    </ul>
+  </div>
+
+  <!-- ③ 범례 -->
+  <ul class="flex flex-wrap items-center gap-x-4 gap-y-1"> … </ul>
+</figure>
+```
+
+  > **y축 눈금 정렬 트릭 — `-my-1.5`는 `<ul>`이 아니라 각 `<li>`에 붙인다.**
+  > `leading-none` + `text-micro`이면 `<li>` 높이는 12px다. 여기에 `-my-1.5`(위아래 −6px)를 주면 **바깥 박스 높이가 0**이 되고,
+  > `justify-between`이 높이 0인 박스 4개를 플롯 상단·1/3·2/3·바닥에 정확히 놓는다 → **글자 중앙이 그리드선과 일치**한다.
+  > `<ul>`에 걸면 목록 전체가 6px 위로 밀려 **아래쪽 라벨만 어긋난다.** (그리드선 y좌표: 0 / 53.33 / 106.67 / 160)
+  >
+  > ⚠️ **`preserveAspectRatio="none"`이 필수다.** 이 값이 없으면 SVG가 320:160 비율을 유지하려 하여
+  > `h-chart`로 높이를 고정한 순간 폭이 320÷160×160=320px에 묶이고 **넓은 화면에서 차트만 좁게 남는다.**
+  > `none`이면 x는 폭에 맞춰 늘어나고 y는 높이에 맞춰 늘어난다 — 막대 폭이 화면 폭에 비례해 넓어지는 것이 의도다.
+  > 대신 **선 굵기가 x/y로 다르게 늘어나는 왜곡**이 생기므로, `<line>`·`<polyline>`·`<circle>`에는 반드시
+  > **`vector-effect="non-scaling-stroke"`** 를 준다(선 굵기가 CSS px로 고정된다). 마커 `<circle>`은 `r`도 왜곡되므로 아래 ⑤ 참고.
+
+- **좌표 상수 — 파일 상단에 한 번만 정의한다** (`viewBox` 사용자 단위. CSS px 아님 → Tailwind 토큰으로 만들지 않는다)
+
+```ts
+const VB_W = 320;        // viewBox 가로. "논리 폭"일 뿐 실제 px 가 아니다
+const VB_H = 160;        // viewBox 세로. 실제 높이는 h-chart / md:h-chart-lg 가 정한다
+const GRID_LINES = 4;    // 가로 그리드선 개수(= 3구간). 0 / 1/3 / 2/3 / 최대
+const BAR_RATIO = 0.5;   // 밴드 폭 대비 막대 폭 비율
+const BAR_MIN_W = 6;     // 등급이 아주 많을 때의 막대 최소 폭
+const BAR_MAX_W = 40;    // 등급이 1~2개일 때 막대가 판때기처럼 보이지 않게 하는 상한
+const BAR_MIN_H = 2;     // count > 0 인데 비율이 극히 작을 때도 "보이게" 하는 최소 높이
+const BAR_RX = 2;        // 막대 모서리. 아래쪽은 축선에 닿아 둥근 것이 티나지 않는다
+const MARKER_R = 4;      // 라인 마커 반지름(각 등급 지점의 실제 값 위치를 확정한다)
+const LINE_W = 2;        // 라인·마커 테두리 굵기(non-scaling-stroke 라 CSS px 로 고정된다)
+const GRID_W = 1;        // 그리드선 굵기. 데이터보다 앞서면 안 되므로 가장 얇게
+```
+  > 예시(등급 5개): `band = 64`, `barW = 32`(= 64×0.5, 클램프 미적용), 첫 막대 `x = 32 − 16 = 16`.
+
+- **좌표 계산식 — frontend-dev 필독** (이 블록이 이 섹션의 핵심이다)
+
+```ts
+const n = items.length;
+
+// ① x축: 등급 개수만큼 균등 밴드로 나눈다. 밴드 중앙이 "그 등급의 x좌표"다.
+const band = VB_W / n;                                   // 밴드(= 한 등급이 차지하는 폭)
+const barW = Math.min(Math.max(band * BAR_RATIO, BAR_MIN_W), BAR_MAX_W); // 막대 폭(클램프)
+const cx   = (i: number) => band * (i + 0.5);            // 밴드 중앙 = 막대 중심 = 라인 마커 x
+const barX = (i: number) => cx(i) - barW / 2;            // rect 의 x (중앙 정렬)
+
+// ② y축 좌(막대, count): 0 ~ maxCount. **0 나눗셈 방지가 여기 있다.**
+const rawMax = Math.max(...items.map((it) => it.count)); // 음수는 계약상 없다
+//    눈금 3구간이 정수로 떨어지도록 3의 배수로 올림한다(4/8/12 처럼 읽기 좋은 눈금).
+//    rawMax <= 0 이면(전량 0 = 부모가 빈 상태로 걸러내지만 방어) 1 로 두어 NaN/Infinity 를 막는다.
+const maxCount = rawMax > 0 ? Math.ceil(rawMax / 3) * 3 : 1;
+
+const barH = (count: number) =>
+  count > 0 ? Math.max((count / maxCount) * VB_H, BAR_MIN_H) : 0; // count 0 → 높이 0
+const barY = (count: number) => VB_H - barH(count);      // SVG y 는 위가 0 → 바닥에서 위로 자란다
+
+// ③ y축 우(라인, percentage): **0~100 고정 보조 스케일로 정규화**한다.
+//    plotHeight === VB_H (내부 여백을 두지 않고 overflow-visible 로 마커를 흘린다)
+const lineY = (percentage: number) => VB_H - (percentage / 100) * VB_H;
+//    ↑ 0%  → y = 160 (바닥) / 50% → y = 80 (중앙) / 100% → y = 0 (천장)
+
+// ④ 라인 좌표 문자열. 소수점은 2자리로 끊어 DOM 문자열이 길어지는 것을 막는다.
+const points = items.map((it, i) => `${cx(i).toFixed(2)},${lineY(it.percentage).toFixed(2)}`).join(" ");
+
+// ⑤ 가로 그리드선 y좌표와 y축 라벨(HTML 쪽에서 같은 식으로 만든다)
+const gridY  = (k: number) => VB_H - (k / (GRID_LINES - 1)) * VB_H;   // k=0 바닥 … k=3 천장
+const yTicks = [3, 2, 1, 0].map((k) => Math.round((maxCount * k) / 3)); // 위→아래 라벨 배열
+```
+
+  - **막대는 언제나 `maxCount` 기준, 라인은 언제나 100 기준**이다. 이 두 스케일을 섞어 쓰면 안 된다.
+  - `y`/`height`는 **속성으로 넣는다**(인라인 `style` 아님). 데이터에서 오는 기하 값이므로 `DistributionBar`의 `width: %`와 같은 예외 범주다.
+    **색은 어떤 경우에도 속성/인라인이 아니라 클래스로만 온다.**
+
+- **SVG 내부 그리기 순서** (뒤에 그린 것이 위에 온다 — 라인이 막대를 덮어야 한다)
+
+```html
+<svg viewBox="0 0 320 160" preserveAspectRatio="none" class="h-chart w-full overflow-visible md:h-chart-lg"
+     aria-hidden="true" focusable="false">
+  <!-- 1) 가로 그리드선 4개(맨 아래 선이 x축 기준선 역할을 겸한다) -->
+  <line x1="0" y1="0"     x2="320" y2="0"     class="stroke-chart-grid" stroke-width="1" vector-effect="non-scaling-stroke" />
+  <line x1="0" y1="53.33" x2="320" y2="53.33" class="stroke-chart-grid" stroke-width="1" vector-effect="non-scaling-stroke" />
+  <line x1="0" y1="106.67" x2="320" y2="106.67" class="stroke-chart-grid" stroke-width="1" vector-effect="non-scaling-stroke" />
+  <line x1="0" y1="160"   x2="320" y2="160"   class="stroke-chart-grid" stroke-width="1" vector-effect="non-scaling-stroke" />
+
+  <!-- 2) 막대: 등급 톤 색. count === 0 이면 아예 렌더하지 않는다 -->
+  <rect x="16" y="40" width="32" height="120" rx="2" class="fill-success" />
+  …
+
+  <!-- 3) 비율 라인: 막대 위에 겹친다. 색은 등급과 무관한 중립 단일색 -->
+  <polyline fill="none" points="32,105.28 96,116.32 …"
+            class="stroke-chart-line" stroke-width="2"
+            stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+
+  <!-- 4) 마커: 라인의 실제 값 위치를 점으로 확정한다. 안쪽을 surface 로 뚫어 막대 위에서도 읽힌다 -->
+  <circle cx="32" cy="105.28" r="4" class="fill-surface stroke-chart-line" stroke-width="2"
+          vector-effect="non-scaling-stroke" />
+  …
+</svg>
+```
+
+  - **⑤ 마커 원의 왜곡에 대한 결정**: `preserveAspectRatio="none"` 아래에서 `<circle>`은 x/y 스케일 차이만큼 **살짝 타원**이 된다.
+    막대·그리드·라인은 `vector-effect="non-scaling-stroke"`로 선 굵기가 고정되지만 `r`은 보정되지 않는다.
+    **보정하지 않고 감수한다.** 근거:
+    - 실사용 구간(플롯 폭 300~640px × 높이 160~192px)에서 x/y 스케일 비는 약 1.0~1.9배이고, `r=4`는 가로로 최대 ≈7.6px가 된다 — **"약간 납작한 점"** 이상으로 보이지 않는다.
+    - 정원으로 만들려면 실제 렌더 폭을 알아야 하는데 이는 **SSR에서 계산할 수 없는 값**이다(`ResizeObserver` + 상태를 들이면 순수 표시 컴포넌트가 클라이언트 컴포넌트가 된다).
+    - 마커의 역할은 **"라인의 값이 정확히 여기"** 를 찍는 것이고, 그 역할은 타원이어도 100% 수행된다.
+
+- **색 매핑 = `GradeBadge`/`DistributionBar`와 완전히 동일**한 톤 함수(`getGradeTone`)를 재사용한다.
+  `DistributionBar`의 `BAR_FILL_BY_TONE`(`bg-*`)과 **쌍이 되는 정적 맵**을 하나 둔다(Tailwind는 문자열 조합 클래스를 인식하지 못하므로 정적 맵이 필수):
+
+```ts
+const BAR_SVG_FILL_BY_TONE: Record<BadgeTone, string> = {
+  neutral: "fill-accent",  // 서버가 준 임의 등급 → accent 로 떨어뜨린다 (DistributionBar 와 동일 규칙)
+  accent:  "fill-accent",
+  success: "fill-success",
+  warning: "fill-warning",
+  danger:  "fill-danger",
+};
+```
+  - `fill-*`는 `theme.extend.colors`에 등록된 이름에서 Tailwind가 자동 생성한다. **막대에는 새 토큰이 필요 없고 다크모드도 자동**이다.
+  - **라인·그리드만 새 토큰을 쓴다**: `stroke-chart-line`(= `text-primary` 값) / `stroke-chart-grid`(= `border-subtle` 값).
+    `stroke-text-primary`·`stroke-border-subtle`는 **존재하지 않는 클래스**다(§3.3 함정 주석 참고).
+  - 라인 색을 **등급 톤 중 하나(예: accent)로 쓰지 않는 이유**: accent는 B 계열 막대 색이라 "B 등급을 잇는 선"으로 오독된다.
+    라인은 **모든 등급에 걸친 계열**이므로 **어느 등급에도 속하지 않는 중립색**이어야 한다.
+  - `stroke="rgb(var(--color-…))"` 같은 인라인 색 지정은 **금지** — 색은 언제나 클래스로 온다.
+
+- **엣지케이스 처리 방침**
+
+| 상황 | 처리 |
+|---|---|
+| `items.length === 0` 또는 합계 `count === 0` | 차트를 렌더하지 않는다. **부모가 카드 전체 빈 상태 1개**로 대체(4.15.0). 이 섹션에서 빈/로딩 상태를 다시 정의하지 않는다 |
+| **등급이 1개뿐** | `band = VB_W`(=320), `barW = clamp(160, 6, 40) = 40` → **막대 1개가 플롯 중앙(x=160)에 선다.** 좌우 여백이 넓어 보이지만 억지로 늘리지 않는다(막대 1개를 320px로 늘리면 "막대"가 아니라 색 배경으로 읽힌다).<br>**라인은 점이 1개이므로 `<polyline>`을 렌더하지 않는다**(점 1개짜리 polyline은 브라우저가 아무것도 그리지 않아 "선이 사라진 버그"처럼 보인다). **마커 `<circle>` 1개만** 찍고, 범례의 라인 항목은 그대로 둔다(마커가 곧 라인 계열이다) |
+| 등급이 2개 | 일반 로직 그대로. 밴드 160, 막대 폭 40(상한), 라인은 2점 직선 |
+| **일부 등급의 `count === 0`** | 해당 막대는 **렌더하지 않는다**(`height="0"`인 `<rect>`를 남기지 않는다 — DOM 노이즈일 뿐이다). 대신 **x축 라벨은 그대로 남고, 라인 마커는 0% 위치(바닥, y=160)에 찍힌다** → "이 등급은 0명"이 라인의 골짜기로 읽힌다. **정보가 사라지지 않는다** |
+| **`maxCount`가 0** (전 등급 0명) | 부모가 이미 빈 상태로 걸러내지만, `maxCount = rawMax > 0 ? … : 1` 한 줄로 **0 나눗셈(`NaN`/`Infinity`)을 원천 차단**한다. 이 방어는 삭제 금지 |
+| `count`는 있는데 비율이 극히 작음(예: 1/500) | 막대 높이를 `BAR_MIN_H(2)`로 클램프해 **선처럼이라도 반드시 그린다.** 정확한 값은 옆 막대 리스트에 있다 |
+| 서버 `percentage` 합이 100이 아님(반올림 오차) | **문제되지 않는다.** 라인은 각 점을 **독립적으로** `percentage/100`로 배치하므로 합계에 의존하지 않는다(도넛과 달리 누적 계산이 없다). 막대도 `count` 기준이다. 원칙은 그대로 — **"막대는 count 기준, 라인·글자는 서버 percentage 기준"** |
+| 등급 종류가 많음(8개 초과) | 밴드가 좁아져 `barW`가 `BAR_MIN_W(6)`까지 줄어든다. x축 라벨은 `truncate`되며, **가로 스크롤은 만들지 않는다**(SVG는 폭 100%에 맞춰 압축된다) |
+| 같은 톤이 이웃함(C·D 둘 다 `warning`) | 막대 사이에 **밴드 여백(밴드의 50%)** 이 항상 있어 붙어 보이지 않는다. 도넛의 `GAP` 상수가 하던 역할을 밴드 여백이 대신한다 |
+| `count` 음수/`NaN` 등 비정상 값 | 방어하지 않는다(서버 계약상 불가). 방어는 `maxCount` 한 줄로만 둔다 |
+
+- **요약 헤드라인** (차트 위 1줄. 도넛 중앙 라벨이 갖고 있던 정보를 **그대로 승계**한다 — 도넛을 버리면서 이 값까지 잃지 않는다)
+
+```html
+<p class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+  <span class="text-title font-semibold tabular-nums text-primary lg:text-display">34.2%</span>
+  <span class="text-caption text-muted">최다 A+ 비중</span>
+</p>
+```
+  - **표시 값 = 최다 등급의 비중(%)** = `topGrade.percentage`. 헤더 배지는 `총 128명`(합계)과 `최다 A+`(어느 등급인가)를 말하고,
+    헤드라인은 **그 등급이 얼마나 지배적인가**라는 헤더에 없는 값을 말한다 → **중복이 아니다.**
+  - 값은 서버 `percentage`를 그대로 쓴다. 동률 판정은 `lib/distribution.ts`의 `summarizeGradeDistribution` 규칙(먼저 온 등급)을 따르며,
+    **부모가 한 번 계산해 `topGrade`로 내려준다.** 최다 등급 판정 로직을 차트 안에서 새로 쓰지 않는다(헤더 배지와 값이 갈라지면 안 된다).
+  - `topGrade === null`이면 이 `<p>`를 렌더하지 않는다(자리만 비워 두지 않는다).
+
+- **범례** (`<ul>`) — 차트 아래. **막대와 라인이 각각 무엇인지**를 말한다(도넛 시절의 "등급별 색 범례"와 역할이 다르다 —
+  등급-색 대응은 바로 옆 막대 리스트의 `GradeBadge`가 이미 보여주므로 여기서 반복하지 않는다)
+
+| 파트 | 클래스 |
+|---|---|
+| 목록 | `flex flex-wrap items-center gap-x-4 gap-y-1` |
+| 항목 | `flex min-w-0 items-center gap-2 text-caption text-secondary` |
+| 막대 스와치 | `<span aria-hidden="true" class="flex h-3 shrink-0 items-end gap-0.5"><i class="h-2 w-1 rounded-sm bg-success"></i><i class="h-3 w-1 rounded-sm bg-accent"></i><i class="h-1.5 w-1 rounded-sm bg-warning"></i></span>` — **여러 색 막대**임을 3색 미니 막대로 표현 |
+| 라인 스와치 | `<svg viewBox="0 0 20 8" class="h-2 w-5 shrink-0" aria-hidden="true" focusable="false"><line x1="0" y1="4" x2="20" y2="4" stroke-width="2" stroke-linecap="round" class="stroke-chart-line"/><circle cx="10" cy="4" r="3" stroke-width="2" class="fill-surface stroke-chart-line"/></svg>` — **차트와 같은 토큰**을 쓰므로 색이 갈라질 수 없다 |
+| 라벨 | `인원수 (명)` / `비율 (%)` |
+| 보조 스케일 안내 | `text-micro text-muted` — 라인 항목 뒤에 `0~100 기준`. **두 계열의 y축이 다르다는 사실을 텍스트로 알린다**(축을 눈으로만 추측하게 두지 않는다) |
+
+  - 범례 스와치에 `bg-primary` 같은 클래스를 쓰지 않는다 — **존재하지 않는다.** 라인 색은 반드시 위처럼 인라인 SVG + `stroke-chart-line`으로 표현한다.
+  - 범례는 **`aria-hidden`이 아니다**(막대=인원, 라인=비율이라는 의미를 전달하는 실제 정보). 반면 y축 눈금·x축 라벨은 `aria-hidden`이다(아래 접근성 참고).
+
+- **반응형 동작 (요약. 카드 전체는 4.15.3 표 참고)**
+
+| | 모바일 (<640) | 태블릿 (≥768) | 데스크탑 (≥1024) |
+|---|---|---|---|
+| 배치 | 카드 본문 **위쪽 풀폭** (세로 스택 첫 번째) | 동일(세로 스택 유지) | 카드 본문 **좌측 절반** (`lg:grid-cols-2`) |
+| 차트 크기 | `w-full h-chart`(160) | `w-full md:h-chart-lg`(192) | `w-full md:h-chart-lg`, 폭은 반쪽(≈300~460px) |
+| 헤드라인 | `text-title` + `text-caption`, 좁으면 2줄(`flex-wrap`) | 동일 | `lg:text-display` + `text-caption` |
+| x축 라벨 | `text-micro` + `truncate` | `sm:text-caption` | `sm:text-caption` |
+| 범례 | `flex-wrap`으로 2줄까지 | 1줄 | 1줄 |
+| 막대 폭 | 밴드가 좁아 `BAR_MIN_W`에 근접(등급 8개 이상일 때) | 밴드가 넓어져 `BAR_RATIO` 그대로 | 반쪽 폭이라 다시 좁아짐 — 클램프가 흡수 |
+
+  > 모바일에서 **정보를 숨기지 않는다.** 등급이 많아도 밴드를 좁힐 뿐 항목을 잘라내지 않고, 가로 스크롤도 만들지 않는다.
+
+- **상태별 스타일**
+
+| 상태 | 처리 |
+|---|---|
+| default | 위 |
+| hover / active | **없다.** 차트는 인터랙티브하지 않다(툴팁·클릭 없음). 값은 옆 막대 리스트가 전부 보여주므로 툴팁이 필요 없다 |
+| focus-visible | **없다.** 포커스 대상이 아니다(`focusable="false"`, `aria-hidden`). 키보드 탐색 순서에 끼어들지 않는다 |
+| disabled | 해당 없음 |
+| loading / empty / error | **이 컴포넌트가 정의하지 않는다.** 판정과 렌더 모두 부모 `GradeDistributionPanel`(4.15.0)의 기존 규칙을 그대로 재사용한다 |
+
+- **접근성**
+
+  - `<svg aria-hidden="true" focusable="false">` — **그림 자체는 접근성 트리에서 제외**한다. 대신:
+    - 반쪽 전체를 `<figure>`로 감싸고
+      `<figcaption class="sr-only">등급별 인원수와 비율 그래프입니다. 세로 막대는 등급별 인원수(명), 막대 위에 겹쳐 그린 꺾은선은 전체 대비 비율(%)을 나타냅니다. 정확한 값은 오른쪽(모바일에서는 아래) 목록에서 등급·인원수·비율로 확인할 수 있습니다.</figcaption>`
+      → **막대=인원수 / 라인=비율**이라는 설명이 캡션 안에 반드시 들어간다.
+    - **별도의 스크린리더용 대체 표를 만들지 않는다.** 같은 카드의 `DistributionBar`가 이미 등급·인원·비율을 텍스트로 낭독하므로 중복 낭독이 된다.
+  - **`aria-hidden` 범위**: `<svg>` / y축 눈금 `<ul>` / x축 라벨 `<ul>` / 2행 1열 스페이서.
+    이 값들은 전부 옆 목록에 텍스트로 존재하므로 **시각 전용 chrome**이다.
+    **범례와 요약 헤드라인은 `aria-hidden`이 아니다** — 목록에 없는 정보(계열의 의미, 최다 등급 비중)를 담고 있다.
+  - 색만으로 정보를 주지 않는다:
+    - 막대 ↔ 등급: **x축 라벨 문자**가 항상 붙는다(+ 옆 목록의 `GradeBadge` 글리프).
+    - 막대 ↔ 라인: **모양이 다르다**(면 vs 선+마커). 색 차이에만 기대지 않으며, 범례가 문자로 한 번 더 말한다.
+  - 대비: 막대 색은 모두 `-DEFAULT` 슬롯(본문 텍스트용으로 4.5:1 검증된 값)이라 `surface` 배경 위에서 3:1(큰 그래픽 요소 기준)을 넘는다.
+    라인은 `text-primary` 값이라 **막대 위에서도 가장 강한 대비**를 갖고, 마커 안쪽을 `fill-surface`로 뚫어 막대와 겹쳐도 위치가 읽힌다.
+    그리드선은 `border-subtle`로 **의도적으로 약하게** 둔다(데이터보다 앞서면 안 되는 보조선이므로 대비 기준 적용 대상이 아니다).
+
+---
+
+#### 4.15.3 등급분포 카드 반응형 (2분할 기준)
+
+| | 모바일 (<640) | 태블릿 (≥768) | 데스크탑 (≥1024) |
+|---|---|---|---|
+| 카드 배치 | 1열 풀폭 | 1열 풀폭 | **1열 풀폭** 〔개정② 변경〕 — 통계 3블록이 그룹 E로 분리되어 **더 이상 같은 `lg:grid-cols-3` 그리드에 있지 않다.** 따라서 `lg:col-span-3`도 사라진다 |
+| **2분할 방향** | **세로 스택** (`grid-cols-1`) — 차트 위 / 막대 리스트 아래 | **세로 스택 유지** (`md`에서도 1열) | **좌우 2분할** `lg:grid-cols-2 lg:items-center` — 차트 좌 / 막대 리스트 우 |
+| 분할선 | 막대 리스트 위 `border-t border-subtle pt-5` | 동일 | `lg:border-t-0 lg:border-l lg:pl-6` (가로선 → 세로선) |
+| 분할 간격 | `gap-5` | `gap-5` | `lg:gap-6` |
+| **콤보 차트 크기** | 폭 `w-full`(고정 px 없음) · 높이 `h-chart`(160) | 폭 `w-full` · 높이 `md:h-chart-lg`(192) — 카드가 넓어지면 세로도 함께 키워 막대가 납작해지지 않게 한다 | 동일(`md:h-chart-lg` 유지). 반쪽 폭 ≈300~460px에서 밴드가 좁아지지만 막대 폭은 `BAR_MIN_W`까지 자동 축소된다 |
+| 요약 헤드라인 | `text-title`(20) + `text-caption` | 동일 | `lg:text-display`(30) + `text-caption`, 좁으면 `flex-wrap`으로 2줄 |
+| y축 눈금 라벨 | `text-micro`(12) — 이보다 줄이지 않는다 | 동일 | 동일 |
+| x축 등급 라벨 | `text-micro`(12) + `truncate` | `sm:text-caption`(14) | `sm:text-caption` 유지 |
+| 범례 | `flex-wrap` 2줄까지 허용 | 대부분 1줄 | 1줄 |
+| 막대 행 구조 | 동일(막대만 신축, `min-w-0 flex-1`) | 동일 | 동일 |
+| 헤더 배지 | 제목 아래로 줄바꿈(`flex-wrap gap-2`) | 제목과 같은 줄 우측 | 동일 |
+| 수치·범례 텍스트 | `text-caption` 유지 — 좁아도 줄이지 않는다(가독성 하한) | 동일 | 동일 |
+
+> **태블릿(768~1023)에서 좌우로 쪼개지 않는 이유**: 이 구간에서 반쪽 폭은 ≈330px다.
+> 콤보 차트는 그 폭에서도 그려지지만, 막대 리스트 반쪽이 `배지(44) + 막대 + "12명 (24.5%)"(≈110)` 를 담기에 빠듯해
+> **가로 막대가 30px 남짓으로 찌그러진다.** 막대가 의미를 잃는 폭이라면 나누지 않는 편이 낫다.
+> 세로 스택은 정보 손실이 0이고 가로 스크롤도 없다. (오히려 태블릿 풀폭에서 콤보 차트의 밴드가 넓어져 등급별 비교가 쉬워진다.)
+>
+> **가로 스크롤 금지 재확인**: 2분할 그리드의 각 트랙에 `min-w-0`이 있어야 `flex-1` 막대와 `truncate` 라벨이 트랙을 넓히지 못한다.
+> 콤보 차트는 **고정 px 폭이 없고**(`w-full` + `viewBox` + `preserveAspectRatio="none"`) 축 그리드도 `minmax(0,1fr)`이므로 어느 폭에서도 카드를 밀지 않는다.
+> 등급이 10개여도 **가로 스크롤을 만들지 않고 밴드를 좁힌다**(스크롤 컨테이너를 두지 않는 것이 이 화면의 결정이다 — 정확한 값은 옆 목록에 있다).
+
+---
+
+### 4.16 `UploadResultPanel` (엑셀 업로드 결과 — 최우선 UX)
+
+- **props**: `result: { createdCount, failedRows } | null`, `serverError?: {status, message} | null`
+- **케이스 A — 전량 성공 (`failedRows.length === 0`)**
+  `AlertBanner tone="success"`
+  제목: `{createdCount}건이 모두 등록되었습니다.`
+  액션: `Button variant="secondary"` [성적 조회하기] → `/scores?lectureName=...`
+- **케이스 B — 부분 실패 (`failedRows.length > 0`)**
+  1. `AlertBanner tone="warning"`
+     제목: `{createdCount}건 등록, {failedRows.length}건 실패`
+     설명: "실패한 행을 수정해 다시 업로드하세요. 단, **정상 등록된 행이 있으므로** 재업로드 시 중복 오류가 발생할 수 있습니다."
+     → "정상 행은 이미 저장되었습니다"는 반드시 **`font-semibold`로 강조**한다.
+  2. 실패행 표 (`DataTable mobile="scroll"`, `tableMinWidth="table-sm"`)
+     컬럼: `행 번호`(`w-*` 대신 `whitespace-nowrap`, 우측정렬 `tabular-nums`) · `실패 사유`(`text-primary`, 줄바꿈 허용 `whitespace-normal break-words`)
+     헤더 위 캡션 `text-caption text-muted` "실패 {n}건"
+     - 실패행이 20건을 넘으면 표 컨테이너에 `max-h`가 아니라 **자체 페이지네이션 없이 전량 표시**(수용 기준: 모두 표시). 대신 표를 카드 안에 두고 페이지 스크롤로 본다.
+- **케이스 C — 500 (전량 롤백)**
+  `AlertBanner tone="error"`
+  제목: "아무것도 저장되지 않았습니다."
+  설명: "해당 강의에 이미 등록된 성적이 있거나, 존재하지 않는 강의이거나, 파일 내 학번이 중복되었습니다."
+  → **케이스 B와 시각적으로 확실히 구분**되어야 한다(warning vs danger + 서로 다른 아이콘 + 제목 문구가 정반대).
+- **케이스 D — 400 / 확장자 오류**
+  폼 상단 `AlertBanner tone="error"` (결과 영역이 아니라 폼 상단).
+- **업로드 중**: 폼 전체 `<fieldset disabled>` + 드롭존 `.is-refetching`, [업로드] 버튼 `loading` + 라벨 "업로드 중…", 결과 영역은 이전 결과를 지우고 `.skeleton` 블록 2개.
+- **반응형**: 모바일 결과 배너·표 전체폭 세로 스택 / `lg` 폼 카드 아래 `col-span-3` 전체폭(좌우로 쪼개지 않는다 — 실패 사유 텍스트가 길다).
+
+---
+
+### 4.17 `ExcelColumnGuide`
+
+- 컬럼 순서를 **순서가 보이게** 표시한다.
+- 클래스: `rounded-lg border border-subtle bg-surface-sunken p-4`
+  제목 `text-caption font-semibold text-secondary` "엑셀 컬럼 순서 (고정)"
+  목록 `<ol class="mt-3 space-y-1.5 text-body text-primary">` 각 항목 `flex items-center gap-2`
+  순번 배지 `Badge tone="neutral"` `1`~`7`
+  1 학번 · 2 이름 · 3 학과 · 4 중간고사점수 · 5 중간과제점수 · 6 기말고사점수 · 7 기말과제점수
+  각주 `mt-3 text-caption text-muted` "합계점수와 등급은 서버가 자동 계산합니다."
+- **반응형**: 모바일 `<details open>` 접기 가능 / `md` 항상 펼침 / `lg` 우측 사이드 `lg:sticky lg:top-24`
+- 가로로 나열하지 않는다(가로 스크롤 위험). 항상 세로 번호 목록.
+
+---
+
+### 4.18 `DescriptionList` (상세 화면 공통)
+
+- **props**: `items: {label, value, span?: 'full'}[]`
+- `<dl class="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-detail-2">`
+  - `<dt class="text-caption font-medium text-muted">`
+  - `<dd class="text-body text-primary break-words">` (숫자면 `tabular-nums`)
+  - 모바일: 라벨 위 / 값 아래 (1열). `md`: 라벨 좌 / 값 우 2열.
+- 값이 없으면 `—` + `sr-only` "값 없음".
+
+---
+
+### 4.19 `LoginCard`
+
+- 컨테이너: `min-h-screen bg-canvas grid place-items-center px-4 py-10`
+- 카드: `w-full md:max-w-auth rounded-xl border border-subtle bg-surface p-6 shadow-card md:p-8`
+  - 로고/서비스명 `text-title font-bold text-primary text-center`
+  - 부제 `mt-1 text-caption text-muted text-center` "학사 담당자 전용"
+  - `reason=expired`면 그 아래 `AlertBanner tone="info"` "세션이 만료되었습니다. 다시 로그인해 주세요."
+  - 폼 `mt-6 space-y-4`: `loginId`(`autoComplete="username"`), `password`(`type="password" autoComplete="current-password"`)
+  - 401 에러: **폼 하단** `AlertBanner tone="error"` "로그인 ID 또는 비밀번호가 올바르지 않습니다." + 비밀번호 필드만 초기화 후 그 필드에 포커스 이동
+  - 제출 버튼 `Button variant="primary" size="lg" fullWidth type="submit"` — **모든 브레이크포인트에서 `w-full`**
+  - **회원가입 링크를 두지 않는다.**
+- **반응형**: 모바일 카드 폭 100%(`px-4` 여백만) / `md` `max-w-auth` 중앙 / `lg` 동일(수직 중앙 유지)
+
+---
+
+**■■■ 여기부터 4.31까지 — 대시보드 확장 분석 8종 〔2026-08-01 개정 ② 신설〕 ■■■**
+
+> 아래 12개 절은 spec.md 「3.7 / 4.4 / 5.0 / 6.1」의 시각 명세다.
+> **파일 배치 제안**: `components/features/dashboard/` 아래에 섹션 컴포넌트를, 재사용 원자는 기존 `components/data/`·`components/ui/`에 둔다.
+> 이름은 이 문서와 일치시킬 것.
+>
+> **읽는 순서**: 4.20(껍데기) → 4.21(공통 원자 4종)을 먼저 읽어야 4.22~4.29가 이해된다.
+> 4.22~4.29는 **화면에 나오는 순서**(spec 4.4의 ③~⑩)로 배열했다.
+
+---
+
+### 4.20 `DashboardSection` — 8개 섹션의 공통 껍데기
+
+- **목적**: spec 6.1이 요구하는 **"섹션 = 로딩·빈·에러·재시도의 단위"** 를 한 곳에서 구현한다.
+  `GradeDistributionPanel`이 이미 쓰는 "패널이 빈/로딩을 **단일 지점에서** 판정" 패턴의 일반화판이다.
+  섹션 컴포넌트 8개는 **자기 빈 상태·에러 UI를 각자 만들지 않는다.** 만들면 8벌이 미묘하게 달라진다.
+
+- **props**
+
+| 이름 | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| `id` | `string` | (필수) | 앵커 id. `<section id>`에 그대로 들어간다 (`score-histogram` 등) |
+| `title` | `string` | (필수) | 섹션 제목 (`<h3>`) |
+| `description` | `string` | (필수) | **이 섹션이 무슨 질문에 답하는가** 1줄. 로딩 중에도 보인다(spec 6.1 결정 6) |
+| `icon` | `ReactNode` | (필수) | `h-5 w-5` 인라인 SVG. 섹션마다 다르다(4.31 표) |
+| `badge` | `ReactNode?` | — | 제목 옆 인라인 배지. 그룹 B·C 섹션은 `<Badge tone="accent">상세</Badge>` |
+| `baselineNote` | `string` | `"전체 기간 · 전체 학과 · 전체 강의 기준"` | **spec 3.7 공통 전제.** 섹션마다 1회 노출이 강제된다 |
+| `state` | `'loading' \| 'refetching' \| 'error' \| 'empty' \| 'success'` | (필수) | `useAsyncData`의 반환값에서 유도한다 |
+| `onRetry` | `() => void` | — | `state === 'error'`일 때만 쓰인다. **이 섹션 1건만** 재요청한다(spec 6.1 결정 3) |
+| `emptyTitle` | `string` | `"표시할 데이터가 없습니다."` | 섹션별 문구는 spec 3.7을 그대로 쓴다 |
+| `emptyDescription` | `string?` | — | |
+| `emptyTone` | `'neutral' \| 'positive'` | `'neutral'` | **`positive`는 위험군 0명 전용.** 아이콘 슬롯이 `bg-success-subtle text-success-strong`이 된다 |
+| `emptyIcon` | `ReactNode` | (필수) | 빈 상태 아이콘. 텍스트만 두지 않는다 |
+| `skeleton` | `ReactNode` | (필수) | 로딩 중 본문 자리에 그릴 노드. **실제 본문과 비슷한 높이**여야 아래 섹션이 튀지 않는다 |
+| `footnotes` | `string[]?` | — | 카드 하단 각주 목록 |
+| `children` | `ReactNode` | (필수) | `state === 'success' \| 'refetching'`일 때만 렌더 |
+
+- **⚠️ `EmptyState` 보강이 선행되어야 한다.** 현재 구현(`components/feedback/EmptyState.tsx`)은 아이콘을
+  `<span class="text-display text-muted">`로 감싸고 있어 4.12가 명세한 **원형 아이콘 슬롯**이 빠져 있고 `tone` prop도 없다. 이번 라운드에서 4.12대로 맞춘다:
+  ```html
+  <span aria-hidden="true"
+        class="grid h-12 w-12 place-items-center rounded-full md:h-16 md:w-16
+               {tone === 'danger'   ? 'bg-danger-subtle text-danger-strong'
+              : tone === 'positive' ? 'bg-success-subtle text-success-strong'
+              :                       'bg-surface-sunken text-muted'}">
+    {icon}  <!-- 아이콘 자체는 h-6 w-6 md:h-8 md:w-8 -->
+  </span>
+  ```
+  `tone`에 **`'positive'`를 추가**한다(4.12의 `neutral | danger`에 이어 세 번째). 위험군 0명 전용이며, 그 외에는 쓰지 않는다.
+
+- **`state` 유도 규칙 (호출부가 이대로 계산할 것)**
+
+```ts
+// useAsyncData: { data, isLoading, isRefetching, error, refetch }
+const state =
+  isLoading            ? "loading"
+  : error              ? "error"      // 401 은 여기 오지 않는다 — 전역 처리(spec 6.1 결정 4)
+  : !data              ? "loading"
+  : isEmpty(data)      ? "empty"      // 섹션마다 다른 판정(예: items.length === 0, totalCount === 0)
+  : isRefetching       ? "refetching"
+  : "success";
+```
+  > `error`를 `empty`보다 **먼저** 본다. 실패했는데 "데이터가 없습니다"로 보이면 사용자가 재시도할 방법을 못 찾는다.
+
+- **구조 / 클래스**
+
+```html
+<section id={id} aria-labelledby={`${id}-title`} class="scroll-mt-16">
+  <Card padding="md" elevation="card">
+    <CardHeader as="h3" icon={icon} badge={badge} title={title} description={description}/>
+
+    <!-- 기준선 문구 — 제목 블록 바로 아래, 본문 위. 로딩/에러/빈 상태에서도 항상 보인다 -->
+    <p class="-mt-2 mb-4 inline-flex items-center gap-1.5 rounded-sm bg-surface-sunken px-2 py-0.5
+              text-micro text-muted md:text-caption">
+      <FilterOffIcon class="h-4 w-4 shrink-0" aria-hidden="true"/>
+      <span class="sr-only">집계 기준: </span>{baselineNote}
+    </p>
+
+    <!-- 본문: 상태에 따라 정확히 하나만 렌더된다 -->
+    {state === "loading"    && <div aria-busy="true">{skeleton}<span class="sr-only">불러오는 중</span></div>}
+    {state === "error"      && <AlertBanner tone="error" title={NETWORK_ERROR_MESSAGE}
+                                 description="이 섹션만 불러오지 못했습니다. 다른 항목은 정상입니다."
+                                 action={<Button variant="secondary" size="sm" onClick={onRetry}>다시 시도</Button>}/>}
+    {state === "empty"      && <EmptyState icon={emptyIcon} title={emptyTitle} description={emptyDescription}/>}
+    {(state === "success" || state === "refetching") &&
+        <div class={state === "refetching" ? "is-refetching" : undefined}>{children}</div>}
+
+    <!-- 각주 -->
+    {footnotes && (
+      <ul class="mt-4 space-y-1 border-t border-subtle pt-3">
+        {footnotes.map(f => <li class="flex gap-1.5 text-caption text-muted"><span aria-hidden="true">※</span>{f}</li>)}
+      </ul>
+    )}
+  </Card>
+</section>
+```
+
+- **상태별 스타일 (요약)**
+
+| 상태 | 처리 |
+|---|---|
+| default(success) | 위 |
+| hover / active / focus-visible | **섹션 카드 자체는 인터랙티브하지 않다.** 유일한 포커스 대상은 에러 배너의 [다시 시도]와 본문 표 안의 정렬 헤더/링크 |
+| disabled | 해당 없음 |
+| loading | 제목·설명·기준선 문구는 유지, 본문만 `skeleton`. 컨테이너 `aria-busy="true"` + `sr-only` "불러오는 중" |
+| refetching | 기존 내용 유지 + `.is-refetching` (흐림 + 비활성). **전체 스피너 금지** |
+| error | 본문 자리에만 `AlertBanner tone="error"` + [다시 시도]. **다른 섹션에 영향 없음.** 배너 설명문이 "이 섹션만 실패"임을 명시해 사용자가 화면 전체를 새로고침하지 않게 한다 |
+| empty | `EmptyState`(아이콘 필수). 제목·설명은 유지 — 제목까지 사라지면 무엇이 비었는지 알 수 없다(spec 6.1 결정 5) |
+
+- **반응형 동작**
+
+| | 모바일 (<640) | 태블릿 (≥768) | 데스크탑 (≥1024) |
+|---|---|---|---|
+| 카드 패딩 | `p-4` | `md:p-6` | `md:p-6` |
+| 헤더 | 아이콘 `h-9 w-9`, 제목 `text-section`, 배지는 제목 아래로 줄바꿈(`flex-wrap`) | 아이콘 `md:h-10 md:w-10`, 배지가 제목과 같은 줄 | 동일 |
+| 기준선 문구 | `text-micro`(12) — 보조 chrome이라 하한 예외 | `md:text-caption`(14) | `md:text-caption` |
+| 각주 | 1열 세로 | 1열 세로 | 1열 세로 (문장이 길어 다단 금지) |
+| 카드 폭 | 풀폭 | 풀폭 | 풀폭 (섹션을 좌우로 쪼개지 않는다 — 전부 넓은 표/차트를 담는다) |
+
+- **접근성**
+  - `<section aria-labelledby>`로 8개 섹션이 스크린리더의 랜드마크 목록에 제목과 함께 나열된다.
+  - 기준선 문구에 `<span class="sr-only">집계 기준: </span>`을 붙여 "전체 기간 · 전체 학과 · 전체 강의 기준"이 **무엇에 대한 말인지** 낭독으로 전달한다.
+  - 에러 배너는 `AlertBanner`가 이미 `role="alert"`을 갖는다. 섹션이 8개이므로 **동시에 8개가 alert를 쏘면 낭독이 폭주**한다 → 배너의 `role`을 그대로 두되, **첫 진입 시에는 스크린리더 낭독을 유발하지 않도록 로딩 → 에러 전환에서만 마운트**한다(로딩 스켈레톤이 먼저 렌더되므로 자연히 충족된다).
+
+---
+
+### 4.21 공통 원자 4종 — 8개 섹션이 공유한다
+
+#### 4.21.1 `SectionStatStrip` — 섹션 상단 지표 스트립 (정보 밀도의 핵심)
+
+- **목적**: "표만 있는 섹션"을 막는다. 레퍼런스의 통계 위젯 밀도(아이콘 슬롯 + 값 + 라벨 + 배지)를 **섹션 단위로** 재해석한 것.
+  **표시하는 값은 전부 응답 필드이거나 응답 필드의 단순 집계(최댓값·개수·차)** 이며 **지어낸 수치가 없다.**
+- **왜 `MetricCard`를 쓰지 않는가**: `MetricCard`는 `<Card as="li">`라 그림자를 갖는다. 섹션 카드 안에 들어가면 카드 속 카드가 되어 4.4의 그림자 계층(0층 = 카드 안쪽은 그림자 없음)을 깬다.
+
+- **props**
+
+| 이름 | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| `items` | `SectionStatItem[]` | (필수) | 2~4개. **5개 이상 넣지 않는다**(스트립이 두 번째 표가 된다) |
+| `columns` | `2 \| 3 \| 4` | `4` | `lg` 이상에서의 열 수 |
+
+```ts
+interface SectionStatItem {
+  key: string;
+  icon?: ReactNode;                 // h-4 w-4
+  label: string;                    // 지표명
+  value: string;                    // 이미 포맷된 값
+  tone?: "neutral" | "accent" | "success" | "warning" | "danger";  // 아이콘 슬롯 톤. 기본 neutral
+  badge?: ReactNode;                // 값 옆 작은 배지(예: 편차, 플래그 개수)
+}
+```
+
+- **클래스**
+
+```html
+<ul class="grid grid-cols-1 gap-3 rounded-lg bg-surface-sunken p-3 sm:grid-cols-2 lg:grid-cols-4 md:p-4">
+  <li class="flex min-w-0 items-center gap-3">
+    <span aria-hidden="true" class="grid h-8 w-8 shrink-0 place-items-center rounded-md {tone}">{icon}</span>
+    <div class="min-w-0">
+      <p class="truncate text-caption text-muted">{label}</p>
+      <p class="flex flex-wrap items-baseline gap-1.5">
+        <span class="text-body font-semibold tabular-nums text-primary md:text-section">{value}</span>
+        {badge}
+      </p>
+    </div>
+  </li>
+</ul>
+```
+
+| tone | 클래스 | 언제 쓰는가 |
+|---|---|---|
+| `neutral` | `bg-surface text-secondary` | 규모·개수 (건수, 학과 수, 구간 폭) |
+| `accent` | `bg-accent-subtle text-accent-strong` | 기준선·대표값 (전체 가중평균, 최다 구간) |
+| `success` | `bg-success-subtle text-success-strong` | 좋은 방향의 값 (최고 평균 학과, 향상 학생 비율) |
+| `warning` | `bg-warning-subtle text-warning-strong` | **확인이 필요한 개수** (인플레이션 의심 강의 수, 난이도 이상치 수) |
+| `danger` | `bg-danger-subtle text-danger-strong` | **위험군 섹션 전용** (표시 인원, F학점 총계) |
+
+  > 4.14의 "KPI 아이콘에 warning/danger 금지" 규칙과 **모순이 아니다.** 그 규칙은 *중립적인 집계 숫자*에 상태색을 칠하지 말라는 것이고,
+  > 여기서 warning/danger가 붙는 항목은 그 자체가 **"확인 필요"라는 판정 결과**(인플레이션 의심 / 학사경고 위험군)다.
+  > 판단 기준: **라벨 텍스트만 읽어도 "확인이 필요하다"가 성립하면 warning/danger를 써도 된다.**
+
+- **반응형**
+
+| | 모바일 (<640) | 태블릿 (≥768) | 데스크탑 (≥1024) |
+|---|---|---|---|
+| 그리드 | `grid-cols-1 gap-3` | `sm:grid-cols-2` 유지 | `lg:grid-cols-{columns}` |
+| 값 | `text-body`(16) | `md:text-section`(18) | `md:text-section` |
+| 라벨 | `text-caption` + `truncate` | 동일 | 동일 |
+| 아이콘 슬롯 | `h-8 w-8` | 동일 | 동일 (KPI 카드보다 작다 — 종속 지표임을 크기로 표현) |
+
+- **상태별**: `hover`/`focus`/`disabled` **없음**(표시 전용). 로딩은 부모 `DashboardSection`의 `skeleton`이 담당하며, 스트립 스켈레톤은 `<div class="skeleton h-20 w-full rounded-lg">` 1장으로 대체한다.
+- **접근성**: 아이콘 `aria-hidden`. 값·라벨이 전부 텍스트다. `<ul>/<li>`라 항목 수가 낭독된다.
+
+#### 4.21.2 `DeviationValue` — 부호 있는 편차 (색만으로 구분하지 않는다)
+
+- **목적**: `deviationFromOverall`, `deviationFromLectureAverage`, `examVsAssignmentGap`, `improvement`, 학기 대비 증감 — **5곳**의 ± 값을 하나로 표현한다.
+- **핵심 규칙 3가지**
+  1. **부호 문자를 반드시 붙인다.** `+` 와 `−`(U+2212 MINUS SIGN). `formatNumber(-3.4)`가 주는 ASCII 하이픈을 그대로 쓰지 않는다 —
+     `tabular-nums`에서 하이픈은 폭이 좁아 세로 정렬이 어긋난다. **절댓값을 포맷하고 부호를 앞에 붙인다.**
+  2. **방향 글리프를 병행한다.** `▲`(양) / `▼`(음) / `=`(0). 색맹·흑백 인쇄에서도 방향이 남는다.
+  3. **`|value| < 0.05`(표시 자릿수 1자리에서 반올림하면 0.0)는 0으로 취급**해 `=` + `0.0`을 그린다. `+0.0`/`−0.0`은 거짓 방향 신호다.
+
+- **props**
+
+| 이름 | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| `value` | `number` | (필수) | 원본 편차 |
+| `unit` | `string?` | `"점"` | `점` / `%p` / `명` |
+| `digits` | `number` | `1` | 소수 자릿수 |
+| `tone` | `'neutral' \| 'evaluative'` | `'neutral'` | 아래 표 참고 |
+| `srLabel` | `{ up: string; down: string; flat: string }` | 아래 기본값 | 스크린리더용 방향 문구 |
+
+- **`tone` 배정 — 이 판단이 이 컴포넌트의 존재 이유다**
+
+| tone | 색 | 사용처 | 근거 |
+|---|---|---|---|
+| **`neutral`** | 양·음·0 **전부 `text-secondary`** | ⑤ 강의별 난이도의 `deviationFromOverall` / `deviationPercentagePoint`, ⑦ `examVsAssignmentGap` | **양수가 좋은 것이 아니다.** 강의 평균이 전체보다 높다 = "쉬운 강의"이고, 그건 좋을 수도(잘 가르쳤다) 나쁠 수도(변별력 없음) 있다. 시험−과제 격차도 어느 쪽이 우월하다고 말할 수 없다. **여기에 초록/빨강을 칠하면 화면이 없는 판단을 내리는 것이다.** 방향은 글리프와 부호가 전달한다 |
+| **`evaluative`** | 양 `text-success-strong` / 음 `text-danger-strong` / 0 `text-muted` | ⑥ 학과×강의 셀의 `deviationFromLectureAverage`, ⑦ `improvement`(전반→후반), ⑧ 직전 학기 대비 증감 | 이 셋은 **같은 모집단 안에서 위/아래**를 말한다. "이 학과가 그 강의 평균보다 높다", "후반부에 성취가 올랐다", "지난 학기보다 평균이 올랐다" — 방향의 좋고 나쁨이 도메인에서 명확하다 |
+
+  > 색은 어디까지나 **세 번째 단서**다. `evaluative`에서도 글리프와 부호는 그대로 붙는다.
+
+- **클래스 / 구조**
+
+```html
+<span class="inline-flex items-baseline gap-1 whitespace-nowrap tabular-nums {toneClass}">
+  <span aria-hidden="true" class="text-micro leading-none">▲</span>
+  <span class="font-medium">+2.1점</span>
+  <span class="sr-only">전체 평균보다 높음</span>
+</span>
+```
+  - `srLabel` 기본값: `{ up: "기준보다 높음", down: "기준보다 낮음", flat: "기준과 같음" }`. 섹션마다 문맥에 맞게 덮어쓴다
+    (예: ⑧ 학기별 추이 → `{ up: "직전 학기보다 상승", down: "직전 학기보다 하락", flat: "직전 학기와 동일" }`).
+  - 비교 대상이 없을 때(예: 첫 학기 행)는 이 컴포넌트를 렌더하지 않고 **`StatValue`의 null 표시**(4.21.3)로 대체한다.
+
+- **상태별**: 인터랙티브하지 않다. hover/focus/disabled 없음.
+- **반응형**: 전 구간 동일(`text-caption` 상속). 표 셀 안에서만 쓰이므로 자체 크기 클래스를 갖지 않는다. **줄바꿈 금지**(`whitespace-nowrap`) — 부호와 숫자가 갈라지면 의미가 깨진다.
+
+#### 4.21.3 `StatValue` — nullable 지표 값 (`—` + "계산 불가")
+
+- **목적**: spec 3.7 (2)(3)·가정 24 — `stddevTotalScore` / `medianTotalScore` / `medianPercentage`의 `null`은 **`0`이 아니라 "계산 불가"** 다. 정반대 의미이므로 절대 같게 보이면 안 된다.
+- **기존 관례 재사용**: 4.18 `DescriptionList`의 "값이 없으면 `—` + `sr-only` 값 없음" 규칙과 `lib/format.ts`의 `formatNumber`(null → `EMPTY_VALUE_PLACEHOLDER`)를 그대로 쓴다. **새 표시 규약을 만들지 않는다.**
+
+- **props**: `value: number | null`, `digits?: number = 1`, `unit?: string`, `nullHint?: string`
+
+```html
+<!-- 값이 있을 때 -->
+<span class="tabular-nums text-primary">78.3<span class="text-caption text-muted">점</span></span>
+
+<!-- 값이 null 일 때 -->
+<span class="text-muted" title="집계 대상이 1건 이하여서 계산할 수 없습니다">
+  <span aria-hidden="true">—</span>
+  <span class="sr-only">계산 불가 — 집계 대상이 1건 이하입니다</span>
+</span>
+```
+
+- **`title` 툴팁만으로 끝내지 않는다.** 터치 기기에는 hover가 없다. → **`null`이 하나라도 있는 표에는 각주를 강제한다**:
+  `DashboardSection.footnotes`에 `"— 는 집계 대상이 1건 이하여서 표준편차·중앙값을 계산할 수 없는 값입니다. 0과 다릅니다."` 를 넣는다.
+  (각주는 `null`이 하나도 없으면 렌더하지 않는다 — 없는 문제를 설명하지 않는다.)
+- **`0`과의 시각 구분**: `0`은 `text-primary`(정상 값), `—`는 `text-muted`. 굵기·색·글리프 3중으로 다르다.
+- **상태별 / 반응형**: 인터랙티브하지 않음. 표 셀 타이포를 상속하므로 자체 크기 클래스 없음.
+
+#### 4.21.4 `InitialAvatar` — 이니셜 아바타 칩 (랭킹·위험군 전용)
+
+- **목적**: 레퍼런스 테이블의 아바타 자리. 이 도메인에는 사진이 없으므로 **이름 첫 글자 원형 칩**으로 대체한다.
+  학번·이름이 나열되는 두 섹션에서 **행을 눈으로 찾는 앵커** 역할을 한다.
+- **props**: `name: string`, `tone?: 'neutral' | 'danger'` (기본 `neutral`)
+
+```html
+<span aria-hidden="true"
+      class="grid h-8 w-8 shrink-0 place-items-center rounded-full text-caption font-semibold
+             {tone === 'danger' ? 'bg-danger-subtle text-danger-strong' : 'bg-surface-sunken text-secondary'}">
+  홍
+</span>
+```
+- **첫 글자 추출**: `name.trim().charAt(0)`. 빈 문자열이면 칩을 렌더하지 않는다(빈 원을 그리지 않는다).
+- **`aria-hidden` 필수.** 바로 옆에 이름 전체가 텍스트로 있으므로 낭독하면 "홍 홍길동"이 된다.
+- **동명이인 주의**: 이니셜은 식별자가 아니다. **행의 식별자는 학번**이며 학번은 항상 텍스트로 보인다(spec 가정 29).
+- **반응형**: 전 구간 `h-8 w-8`. 모바일 카드 스택에서도 같은 크기 — 줄이면 글자가 읽히지 않는다.
+
+---
+
+### 4.22 ③ 점수 구간 분포 — `ScoreHistogramSection`
+
+> 데이터: `GET /dashboard/score-histogram` → `ScoreHistogramResponseDto`
+> 앵커 `#score-histogram` · 그룹 A · 아이콘 `ChartIcon`(기존)
+
+- **목적**: 바로 위 등급 분포와 **같은 모집단을 등급 축이 아니라 점수 축으로** 본다.
+  두 카드가 나란히 있어 "A가 많다"와 "90점대가 많다"가 서로를 설명한다 → **의도적으로 등급분포 카드와 동일한 2분할 문법**(좌: 형태 / 우: 값)을 쓴다.
+- **제목/설명**
+  - 제목 `점수 구간 분포`
+  - 설명 `합계점수를 구간으로 나눠 몇 명이 어디에 몰려 있는지 봅니다.`
+  - 배지 없음(그룹 A는 "상세/요약" 위계가 필요 없다)
+- **빈 상태 판정**: `totalCount === 0` → `emptyTitle="집계할 성적이 없습니다."`, `emptyIcon=<ChartIcon/>`
+  ⚠️ `buckets.length === 0`을 빈 상태로 쓰지 않는다. 서버는 빈 구간도 채워 보내므로 `buckets`는 항상 있다.
+
+- **`SectionStatStrip` (3칩, `columns={3}`)** — 전부 응답 필드에서 계산된다
+
+| 칩 | 라벨 | 값 | tone | 근거 필드 |
+|---|---|---|---|---|
+| 1 | 집계 대상 | `1,284건` | `neutral` | `totalCount` |
+| 2 | 구간 폭 | `10점 (만점 100점)` | `neutral` | `bucketSize`, `totalScoreMax` — **응답값을 그대로 쓴다.** `MAX_SCORE` 상수 금지(spec 3.7 공통 전제) |
+| 3 | 최다 구간 | `70 ~ 79` + `Badge tone="accent"` `328명 (25.5%)` | `accent` | `buckets` 중 `count` 최댓값. 동률이면 `bucketIndex`가 작은 쪽 |
+
+- **본문 2분할** (등급분포 4.15.0과 동일한 클래스 세트를 재사용)
+
+| 파트 | 클래스 |
+|---|---|
+| 그리드 | `mt-4 grid grid-cols-1 gap-5 lg:grid-cols-2 lg:items-center lg:gap-6` |
+| 절반 1 (히스토그램) | `flex min-w-0 flex-col gap-4` |
+| 절반 2 (구간 막대 리스트) | `min-w-0 border-t border-subtle pt-5 lg:border-t-0 lg:border-l lg:border-subtle lg:pt-0 lg:pl-6` |
+
+  > `md`에서 좌우로 쪼개지 않는 이유는 4.15.3과 동일하다 — 반쪽 폭 ≈330px에서 막대 리스트가 찌그러진다.
+  > 다만 **구간 라벨(`90 ~ 100`)이 등급 배지(`A+`)보다 넓다**는 차이가 있으므로 라벨 칩 폭을 `min-w-touch`가 아니라 `min-w-touch` + `justify-center` + `whitespace-nowrap`으로 두고, 막대가 `min-w-0 flex-1`로 흡수한다.
+
+- **각주** (`footnotes`)
+  - `인원이 0명인 구간도 생략하지 않고 표시합니다. 빈 구간이 사라지면 분포의 모양이 왜곡됩니다.`
+
+#### 4.22.1 `ScoreHistogramChart` — 순수 SVG 세로 막대 + 누적 비율 라인
+
+- **목적**: 점수 분포의 **모양**(어디로 쏠렸나, 쌍봉인가)과 **누적 위치**(60점 미만이 전체의 몇 %인가)를 한 장에 담는다.
+- **`GradeComboChart`와 무엇이 같고 무엇이 다른가 — 반드시 읽을 것**
+
+| | `GradeComboChart` (기존) | `ScoreHistogramChart` (신규) |
+|---|---|---|
+| viewBox / 높이 | `0 0 320 160`, `h-chart`/`md:h-chart-lg` | **완전히 동일** |
+| 축 레이아웃 | `grid-cols-chart-axis` (좌 눈금 + 플롯) | **완전히 동일** |
+| 좌축(막대) | `count`, `0 ~ maxCount` 자동 확대 | **완전히 동일** |
+| 우축(라인) | `percentage`, `0~100` 고정 | **누적** `percentage`, `0~100` 고정 |
+| 막대 폭 비율 | `BAR_RATIO = 0.5` (등급 = **이산 범주** → 떨어져 있어야 한다) | **`BAR_RATIO = 0.82`** (점수 = **연속 축** → 붙어 있어야 "분포의 능선"으로 읽힌다) |
+| 막대 색 | 등급 톤 5색 | **`fill-accent` 단색** (구간에는 좋고 나쁨이 없다) |
+| 라인 x 위치 | 밴드 **중앙** (그 등급의 값) | 밴드 **오른쪽 경계** (그 구간**까지** 누적한 값) |
+| 선/그리드 토큰 | `stroke-chart-line` / `stroke-chart-grid` | **완전히 동일** |
+| 애니메이션 | 없음 | 없음 (5절 규칙 동일) |
+
+  > **왜 누적 라인인가.** `percentage`는 `count`에 정비례하므로 라인을 비누적으로 그리면 **막대와 픽셀 단위로 같은 모양**이 겹쳐 무의미하다
+  > (4.15.2가 등급분포에서 두 스케일을 다르게 둔 것과 같은 문제). 누적은 **단조 증가 S자**라 막대와 모양이 확실히 다르고,
+  > "합격선 아래가 몇 %인가"라는 히스토그램에서만 답할 수 있는 질문을 담는다. **누적값은 응답 `percentage`의 단순 합**이며 서버 값을 재계산하지 않는다.
+
+- **좌표 상수** (파일 상단에 한 번만. `viewBox` 사용자 단위 → Tailwind 토큰으로 만들지 않는다)
+
+```ts
+const VB_W = 320;            // GradeComboChart 와 동일
+const VB_H = 160;
+const GRID_LINES = 4;
+const TICK_SEGMENTS = GRID_LINES - 1;   // 3
+const BAR_RATIO = 0.82;      // ⚠️ 콤보 차트(0.5)와 다른 유일한 상수. 연속 축이라 막대를 붙인다
+const BAR_MIN_W = 3;         // 구간이 20개를 넘어도 막대가 사라지지 않게
+const BAR_MIN_H = 2;         // count>0 인데 비율이 극히 작아도 "보이게"
+const BAR_RX = 2;
+const MARKER_R = 3;          // 콤보(4)보다 작다 — 막대가 붙어 있어 마커가 클수록 겹친다
+const LINE_W = 2;
+const GRID_W = 1;
+const PERCENT_MAX = 100;
+const COORD_DIGITS = 2;
+const MIN_POINTS_FOR_LINE = 2;
+```
+
+- **좌표 계산식 — frontend-dev 필독**
+
+```ts
+const n = buckets.length;                       // 서버가 bucketIndex 오름차순으로 준다. 재정렬 금지
+
+// ① x축: 구간 개수만큼 균등 밴드
+const band   = VB_W / n;
+const barW   = Math.max(band * BAR_RATIO, BAR_MIN_W);   // 상한 없음(구간이 적으면 넓은 편이 자연스럽다)
+const centerX = (i: number) => band * (i + 0.5);        // 막대 중심
+const barX    = (i: number) => centerX(i) - barW / 2;
+
+// ② 좌축(막대, count): 0 ~ maxCount. 눈금 3구간이 정수로 떨어지도록 3의 배수 올림.
+//    rawMax <= 0 방어는 콤보 차트와 동일하게 **삭제 금지**(0 나눗셈 → NaN/Infinity 차단).
+const rawMax   = Math.max(...buckets.map((b) => b.count));
+const maxCount = rawMax > 0 ? Math.ceil(rawMax / TICK_SEGMENTS) * TICK_SEGMENTS : 1;
+
+const barH = (count: number) =>
+  count > 0 ? Math.max((count / maxCount) * VB_H, BAR_MIN_H) : 0;
+const barY = (count: number) => VB_H - barH(count);      // SVG y 는 위가 0
+
+// ③ 우축(라인, 누적 비율): 0~100 고정.
+//    서버 percentage 합이 반올림으로 100.1 이 될 수 있으므로 100 으로 클램프한다.
+const cumulative: number[] = [];
+buckets.forEach((b, i) => {
+  cumulative.push(Math.min(PERCENT_MAX, (cumulative[i - 1] ?? 0) + b.percentage));
+});
+const lineY = (p: number) => VB_H - (p / PERCENT_MAX) * VB_H;
+//    ↑ 0% → y=160(바닥) / 50% → y=80 / 100% → y=0(천장)
+
+// ④ 누적 라인의 x 는 **구간의 오른쪽 경계**다.
+//    "이 구간까지 포함해 몇 %"라는 뜻이므로 밴드 중앙이 아니다. 마지막 점은 x=320(플롯 우단).
+const cumX   = (i: number) => band * (i + 1);
+const points = cumulative
+  .map((p, i) => `${round(cumX(i))},${round(lineY(p))}`)
+  .join(" ");
+//    ⚠️ 마지막 마커가 우단에 걸쳐 반쯤 밖으로 나간다 → `overflow-visible` 이 필수(콤보 차트와 동일).
+
+// ⑤ 가로 그리드선 y + 좌축 눈금 라벨 (같은 분모 TICK_SEGMENTS 에서 나온다)
+const gridY  = (k: number) => VB_H - (k / TICK_SEGMENTS) * VB_H;         // k=0 바닥 … k=3 천장
+const yTicks = [3, 2, 1, 0].map((k) => Math.round((maxCount * k) / TICK_SEGMENTS)); // 위→아래
+```
+  - 예시(구간 10개): `band = 32`, `barW = 26.24`, 첫 막대 `x = 16 − 13.12 = 2.88`, 첫 누적 마커 `x = 32`.
+    막대 오른쪽 끝 `= band*(i+0.91)`이고 마커 `= band*(i+1)`이므로 **마커는 막대 사이 틈에 놓인다**(겹치지 않는다).
+
+- **SVG 그리기 순서** (뒤에 그린 것이 위)
+
+```html
+<svg viewBox="0 0 320 160" preserveAspectRatio="none"
+     class="h-chart w-full overflow-visible md:h-chart-lg" aria-hidden="true" focusable="false">
+  <!-- 1) 가로 그리드선 4개 -->
+  <line x1="0" y1={gridY(k)} x2="320" y2={gridY(k)} class="stroke-chart-grid" stroke-width="1" vector-effect="non-scaling-stroke"/>
+  <!-- 2) 막대: count===0 이면 렌더하지 않는다(height="0" rect 를 남기지 않는다) -->
+  <rect x={barX(i)} y={barY(c)} width={barW} height={barH(c)} rx="2" class="fill-accent"/>
+  <!-- 3) 누적 라인 -->
+  <polyline fill="none" points={points} class="stroke-chart-line" stroke-width="2"
+            stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+  <!-- 4) 누적 마커 -->
+  <circle cx={cumX(i)} cy={lineY(cum)} r="3" class="fill-surface stroke-chart-line" stroke-width="2"
+          vector-effect="non-scaling-stroke"/>
+</svg>
+```
+  - `preserveAspectRatio="none"` + `vector-effect="non-scaling-stroke"`는 **콤보 차트와 같은 이유로 필수**다(4.15.2 주석 참고).
+  - 마커 `<circle>`이 살짝 타원이 되는 것은 **보정하지 않고 감수한다**(4.15.2 ⑤와 동일한 근거).
+
+- **축 라벨 (HTML — SVG 안에 넣지 않는다)**
+
+| 파트 | 내용 | 클래스 |
+|---|---|---|
+| 좌축 눈금 | `yTicks` 4개 (인원수) | 콤보 차트와 **완전히 동일**: `flex h-chart flex-col justify-between text-micro leading-none tabular-nums text-muted md:h-chart-lg`, 각 `<li>`에 `-my-1.5 text-right` |
+| x축 라벨 | 각 구간의 **하한값만** (`bucket.minScore`) — `0 10 20 … 90` | `grid auto-cols-fr grid-flow-col`, 각 `<li class="min-w-0 truncate px-0.5 text-center text-micro font-medium text-secondary sm:text-caption">` |
+| x축 보조 안내 | `각 눈금은 구간의 시작 점수입니다. 마지막 구간의 상한은 {totalScoreMax}점입니다.` | `text-micro text-muted` |
+
+  > **왜 `label`("90 ~ 100") 전체를 x축에 쓰지 않는가**: 구간 10개 × 8자면 모바일에서 절대 안 들어간다.
+  > **정보가 사라지는 것이 아니다** — 전체 `label`은 오른쪽(모바일에서는 아래) **구간 막대 리스트에 그대로** 있고, `<figcaption>`에도 설명이 있다.
+  > 구간이 16개를 넘어 하한값 라벨끼리 겹치면 `truncate`로 자르되 **항목을 건너뛰지 않는다**(밴드 개수 = 라벨 개수 불변).
+
+- **범례** (콤보 차트와 같은 문법. `aria-hidden` 아님)
+
+| 항목 | 스와치 | 라벨 |
+|---|---|---|
+| 막대 | `<span aria-hidden class="h-3 w-3 rounded-sm bg-accent"/>` (콤보와 달리 **단색**이므로 1색 사각형) | `구간별 인원수 (명)` |
+| 라인 | 콤보 차트와 **동일한 인라인 SVG 스와치**(`stroke-chart-line` + `fill-surface` 마커) | `누적 비율 (%)` + `text-micro text-muted` `0~100 기준` |
+
+- **엣지케이스**
+
+| 상황 | 처리 |
+|---|---|
+| `totalCount === 0` | 차트를 렌더하지 않는다. **부모 `DashboardSection`이 빈 상태 1개**로 대체 |
+| 일부 구간 `count === 0` | 막대는 렌더하지 않고 **x축 라벨과 누적 마커는 남는다.** 누적선이 평평해지는 것으로 "이 구간은 0명"이 읽힌다 |
+| 구간이 1개뿐 (`bucketSize ≥ totalScoreMax`) | `band = 320`, `barW = 262.4` → 막대 1개. **`<polyline>`을 렌더하지 않고 마커 1개만** 찍는다(콤보 차트와 동일 규칙) |
+| `percentage` 합이 100이 아님 | 누적을 `Math.min(100, …)`으로 클램프. 마지막 마커가 천장(y=0) 아래에 살짝 못 미쳐도 **정상**이다 |
+| `maxCount === 0` | `rawMax > 0 ? … : 1` 방어. **삭제 금지** |
+| 구간 20개 초과 | 밴드가 좁아져 `barW`가 `BAR_MIN_W(3)`까지 줄어든다. **가로 스크롤을 만들지 않는다**(SVG가 폭 100%에 압축된다) |
+
+- **반응형**
+
+| | 모바일 (<640) | 태블릿 (≥768) | 데스크탑 (≥1024) |
+|---|---|---|---|
+| 배치 | 카드 본문 위쪽 풀폭 | 동일(세로 스택 유지) | 좌측 절반 (`lg:grid-cols-2`) |
+| 차트 | `w-full h-chart`(160) | `w-full md:h-chart-lg`(192) | `md:h-chart-lg`, 폭 ≈300~460px |
+| x축 라벨 | `text-micro` + `truncate` | `sm:text-caption` | `sm:text-caption` |
+| 범례 | `flex-wrap` 2줄까지 | 1줄 | 1줄 |
+
+- **상태별**: `hover`/`focus-visible`/`active`/`disabled` **모두 없음**(`aria-hidden` + `focusable="false"`). `loading`/`empty`/`error`는 부모가 판정.
+- **접근성**
+  - `<figure>` + `<figcaption class="sr-only">`:
+    `점수 구간별 분포 그래프입니다. 세로 막대는 각 점수 구간의 인원수(명), 겹쳐 그린 꺾은선은 해당 구간까지의 누적 비율(%)입니다. 구간별 정확한 인원과 비율은 오른쪽(모바일에서는 아래) 목록에서 확인할 수 있습니다.`
+  - **대체 표를 만들지 않는다.** 같은 카드의 구간 막대 리스트가 이미 전 구간을 낭독한다.
+
+#### 4.22.2 구간 막대 리스트 (절반 2)
+
+- **일반화된 `DistributionBar`(4.15.1)를 그대로 쓴다.** 새 컴포넌트를 만들지 않는다.
+- 매핑: `label = <Badge tone="neutral" className="min-w-touch justify-center whitespace-nowrap">{bucket.label}</Badge>`,
+  `fillRatio = bucket.percentage`, `valueText = "{formatCount(count)}명 ({formatNumber(percentage,1)}%)"`,
+  `tone = "accent"` 고정, `emphasized = 최다 구간`.
+- **`count === 0`인 구간도 행을 남긴다.** 막대 폭 0 + `0명 (0.0%)` 텍스트. 행이 사라지면 히스토그램과 목록의 항목 수가 어긋난다.
+
+---
+
+### 4.23 ④ 학과별 학업성취도 — `DepartmentAchievementSection`
+
+> 데이터: `GET /dashboard/department-achievement` → `DepartmentAchievementResponseDto`
+> 앵커 `#department-achievement` · 그룹 B · 아이콘 `BuildingIcon`(기존) · 배지 `<Badge tone="accent">상세</Badge>`
+
+- **목적**: 전체 → 학과로 좁히는 **첫 번째 분해 축**. 표 2개(지표 표 + 등급 교차표)를 세로로 쌓는다.
+- **제목/설명**
+  - 제목 `학과별 학업성취도`
+  - 설명 `학과별 평균·중앙값·편차와 등급 구성을 봅니다. 아래 「학과별 요약」의 상세판입니다.`
+- **빈 상태**: `items.length === 0` → `"집계할 학과가 없습니다."` / `emptyIcon=<BuildingIcon/>`
+- **정렬**: **서버가 준 순서(평균 합계점수 내림차순)를 바꾸지 않는다.** → `DataTable`에 `onSortChange`를 **주지 않는다**(정렬 UI 미노출). 정렬 헤더를 달면 사용자가 정렬을 바꾼 뒤 "서버 순서"라는 전제가 깨진다.
+
+- **`SectionStatStrip` (4칩)**
+
+| 칩 | 라벨 | 값 | tone | 계산 |
+|---|---|---|---|---|
+| 1 | 집계 학과 | `8개` | `neutral` | `items.length` |
+| 2 | 최고 평균 학과 | `컴퓨터공학과` + `Badge tone="neutral"` `82.4점` | `success` | `items[0]` (서버가 내림차순 정렬) |
+| 3 | 최저 평균 학과 | `기계공학과` + `Badge tone="neutral"` `68.1점` | `neutral` | `items[items.length - 1]` |
+| 4 | 학과 간 평균 격차 | `▲14.3점` (`DeviationValue tone="neutral"` 아님 — 단순 양수 폭이므로 `14.3점`으로 표기) | `accent` | `items[0].averageTotalScore − items.at(-1).averageTotalScore` |
+
+  > 칩 4는 **부호가 없는 폭(range)** 이므로 `DeviationValue`를 쓰지 않는다. `DeviationValue`는 방향이 있는 값 전용이다.
+
+- **지표 표** — `DataTable` 재사용 (`mobile="stack"`, `tableMinWidth="table-lg"`, `surface="plain"`, `stickyFirstColumn={false}`)
+
+| # | 컬럼 | align | `mobilePriority` | 셀 |
+|---|---|---|---|---|
+| 1 | 학과 | left | `title` | `departmentName` |
+| 2 | 인원 | right | — | `formatCount(studentCount)` + `명` |
+| 3 | 평균 | right | — | `formatNumber(averageTotalScore, 1)` |
+| 4 | 평균 성취도 | right | — | `formatNumber(averagePercentage, 1)%` |
+| 5 | 중앙값 | right | — | **`StatValue`** (`medianTotalScore`, nullable) |
+| 6 | 표준편차 | right | — | **`StatValue`** (`stddevTotalScore`, nullable) |
+| 7 | 최소~최대 | right | — | `{minTotalScore} ~ {maxTotalScore}` (`whitespace-nowrap tabular-nums`) |
+| 8 | 평균 평점 | right | — | `formatNumber(averageGpa, 2)` |
+| 9 | A등급 비율 | right | — | `formatNumber(aGradeRate,1)%` + `text-caption text-muted` `({aGradeCount}명)` |
+| 10 | F등급 비율 | right | — | `formatNumber(fGradeRate,1)%` + `text-caption text-muted` `({fGradeCount}명)` |
+
+  - **A/F 비율에 색을 칠하지 않는다.** "A가 많다"는 좋은 일도 인플레이션 신호일 수도 있다(⑤가 그걸 판정한다). 여기서는 중립 숫자다.
+  - 모바일 카드 스택에서 **10개 컬럼이 전부** `<dl grid-cols-2>`에 나온다. 컬럼을 숨기지 않는다(1.2 원칙). 「최소~최대」만 `mobilePriority="full"`.
+
+- **각주**
+  1. `성적이 한 건도 없는 학과는 이 표에 나타나지 않습니다.` (spec 3.7 (2))
+  2. `— 는 집계 대상이 1건 이하여서 계산할 수 없는 값입니다. 0과 다릅니다.` (`null`이 하나라도 있을 때만)
+  3. `정렬은 평균 합계점수 내림차순 고정입니다.`
+
+#### 4.23.1 학과 × 등급 교차표
+
+- **`DataTable`을 재사용하되 `columns`를 응답의 `grades` 배열에서 런타임에 만든다.** 별도 매트릭스 렌더러를 만들지 않는다.
+  - `columns[0]` = 학과 (`mobilePriority: "title"`, `sortKey` 없음)
+  - `columns[1..n]` = `grades.map(grade => ({ key: grade, header: grade, align: "right", cell: row => … }))`
+  - `props`: `mobile="stack"`, `tableMinWidth="table-lg"`, `stickyFirstColumn`, `showScrollHint`, `surface="plain"`
+- **열 머리에 `GradeBadge`를 쓴다.** `header`는 `string` 타입이므로 배지를 넣을 수 없다 →
+  **`Column.header`의 타입을 `string` → `ReactNode`로 넓힌다**(기존 호출부는 문자열이므로 전부 하위 호환).
+  단 `DataTable`이 `<caption>`·모바일 `<dt>`에도 `header`를 쓰므로, 배지는 `<GradeBadge grade={g}/>`가 이미 등급 문자를 텍스트로 포함해 낭독에 문제가 없다.
+- **셀 규칙**
+
+| 상황 | 표시 |
+|---|---|
+| `count > 0` | `text-primary tabular-nums` 숫자 + `text-caption text-muted` `({percentage.toFixed(1)}%)` |
+| `count === 0` | **빈칸이 아니라 `0`** (spec 3.7 (2)). `text-muted` — 존재하지만 값이 0임을 흐림으로 표현 |
+| 그 학과의 **최다 등급** 칸 | `bg-accent-subtle text-accent-strong font-semibold` + `<span class="sr-only">이 학과의 최다 등급</span>` — 배경 + 굵기 + sr-only **3중**이라 색 단독이 아니다 |
+
+- **클라이언트가 하지 않는 것 (spec 3.7 (2))**: 등급 축 재정렬, 누락 등급 채워 넣기. 서버가 `grades`와 `gradeCounts`의 개수·순서 일치를 보증한다.
+  다만 **방어적으로 인덱스가 아니라 `grade` 문자로 매칭**한다(`gradeCounts.find(g => g.grade === grade)`) — 서버 변경 시 조용히 열이 밀리는 사고를 막는다. 못 찾으면 `0`.
+- **소제목**: 지표 표와 교차표는 같은 카드 안의 두 블록이므로 `<h4 class="mt-6 mb-3 text-body font-semibold text-primary">학과 × 등급 교차표</h4>` 로 구분한다.
+
+- **반응형 (4.23 전체)**
+
+| | 모바일 (<640) | 태블릿 (≥768) | 데스크탑 (≥1024) |
+|---|---|---|---|
+| 스트립 | `grid-cols-1` | `sm:grid-cols-2` | `lg:grid-cols-4` |
+| 지표 표 | 행 카드 스택(10필드 전부 노출) | `md:` 표 `min-w-table-lg`, `.scroll-x` 안에서 가로 스크롤 | 동일. `xl`에서 대부분 스크롤 소멸 |
+| 교차표 | 행 카드 스택 — 학과 1개 = 카드 1장, 등급별 값이 `<dl grid-cols-2>`에 전부 | `md:` 표. **첫 컬럼 sticky** + `showScrollHint` | 동일 |
+| 두 표의 배치 | 세로 스택 | 세로 스택 | **세로 스택 유지** — 둘 다 넓은 표라 좌우로 쪼개면 양쪽 다 스크롤이 생긴다 |
+
+---
+
+### 4.24 ⑤ 강의별 난이도·성적편차 — `LectureDifficultySection`
+
+> 데이터: `GET /dashboard/lecture-difficulty` → `LectureDifficultyResponseDto`
+> 앵커 `#lecture-difficulty` · 그룹 B · 아이콘 `BookIcon`(기존) · 배지 `상세`
+
+- **목적**: 두 번째 분해 축(강의). **이 섹션에서만 플래그 배지가 나온다.**
+- **제목/설명**
+  - 제목 `강의별 난이도·성적편차`
+  - 설명 `전체 평균을 기준선으로 두고 강의별로 얼마나 쉬웠는지·점수가 얼마나 흩어졌는지 봅니다.`
+- **빈 상태**: `items.length === 0` → `"집계할 강의가 없습니다."` / `emptyIcon=<BookIcon/>`
+
+- **`SectionStatStrip` (4칩)**
+
+| 칩 | 라벨 | 값 | tone | 계산 |
+|---|---|---|---|---|
+| 1 | 전체 가중평균 (기준선) | `74.6점` + `Badge tone="neutral"` `성취도 74.6%` | `accent` | `overallAverageTotalScore`, `overallAveragePercentage` — **spec 3.7 (3)이 요구하는 기준선 표시가 여기다** |
+| 2 | 집계 강의 | `12개` | `neutral` | `items.length` |
+| 3 | 학점 인플레이션 의심 | `2개` | **`warning`** | `items.filter(i => i.gradeInflation).length`. **0이면 값을 `없음`으로 쓰고 tone을 `neutral`로 내린다** |
+| 4 | 난이도 이상치 | `쉬움 1 · 어려움 2` | `accent` | `difficultyOutlier` 집계. 0/0이면 `없음` + `neutral` |
+
+  > 칩 3의 톤이 개수에 따라 바뀌는 것은 **"0건인데 노란 칩"이 거짓 경보이기 때문**이다. 이 분기는 호출부에서 계산해 `tone`으로 넘긴다.
+
+#### 4.24.1 플래그 배지 톤 매핑 — 근거 포함 (이 섹션의 핵심 판단)
+
+| 플래그 | 라벨(화면 문구) | `Badge` tone | 글리프 | 왜 이 톤인가 |
+|---|---|---|---|---|
+| `gradeInflation === true` | **학점 인플레이션 의심** | **`warning`** | `⚠` | spec 3.7 (3)이 "**경고이지 오류가 아니다**, '비정상' 같은 문구를 쓰지 말라"고 못 박았다. 이 시스템에서 `danger`는 **삭제 버튼 · 업로드 전량 실패 · F등급**에 배정되어 있어 붙이는 순간 "이 강의는 잘못됐다"로 읽힌다. `warning`(=확인 필요)이 의미상 정확하다. `accent`는 너무 중립적이어서 "확인해 보라"는 신호가 사라진다 |
+| `difficultyOutlier === "EASY"` | **평균 대비 쉬움** | **`accent`** | `▲` | 이상치는 **좋고 나쁨이 아니라 분류**다. `success`를 주면 "좋은 강의", `warning`을 주면 "문제 강의"로 읽힌다. `accent`는 이 시스템에서 **정보/분류** 역할(정보 배너·활성 탭)이라 가치 판단이 없다 |
+| `difficultyOutlier === "HARD"` | **평균 대비 어려움** | **`accent`** (EASY와 **같은 톤**) | `▼` | 방향은 **글리프와 텍스트**가 말한다. EASY/HARD에 서로 다른 색을 주면 "초록=좋음/빨강=나쁨"이라는 없는 축이 생긴다. **같은 톤 = 같은 종류의 판정**이라는 사실을 색이 말하고, 방향은 글리프가 말한다 |
+| `difficultyOutlier === null` | — | — | — | **아무것도 렌더하지 않는다.** 빈 배지를 그리지 않는다(spec 3.7 (3)) |
+| 두 플래그 동시 참 | 배지 **2개 나란히** | — | — | 판정 기준이 다르다(A비율 50% vs 평균 10%p 차이). 하나로 합치지 않는다(spec 3.7 (3)) |
+
+- **판정 근거 문구는 어디에 두는가**: 배지 자체에 넣으면 배지가 문장이 된다. → **각주에 고정 문구로** 둔다.
+  - `학점 인플레이션 의심 = A등급(평점 4.0 이상) 비율이 50% 이상인 강의입니다.`
+  - `평균 대비 쉬움/어려움 = 전체 가중평균과 성취도가 10%p 이상 차이 나는 강의입니다.`
+  - 배지에는 추가로 `title` 속성으로 같은 문구를 준다(마우스 사용자 편의. **각주가 있으므로 title이 유일한 경로가 아니다**).
+
+- **표** — `DataTable` (`mobile="stack"`, `tableMinWidth="table-lg"`, `surface="plain"`, 정렬 UI 없음)
+
+| # | 컬럼 | align | `mobilePriority` | 셀 |
+|---|---|---|---|---|
+| 1 | 강의 | left | `title` | `lectureName` |
+| 2 | 판정 | left | `badge` | 플래그 배지 0~2개. `flex flex-wrap items-center gap-1` |
+| 3 | 학기 | left | `full` | `formatTerm(term)` |
+| 4 | 인원 | right | — | `formatCount(studentCount)`명 |
+| 5 | 평균 | right | — | `formatNumber(averageTotalScore,1)` |
+| 6 | 평균 성취도 | right | — | `formatNumber(averagePercentage,1)%` |
+| 7 | 표준편차 | right | — | **`StatValue`** (nullable) |
+| 8 | 평균 평점 | right | — | `formatNumber(averageGpa,2)` |
+| 9 | A / F 비율 | right | — | `{aGradeRate}% / {fGradeRate}%` (`whitespace-nowrap`) + `sr-only` "A등급 비율 …, F등급 비율 …" |
+| 10 | 전체 대비 편차 | right | — | **`DeviationValue tone="neutral"`** (`deviationFromOverall`, 단위 `점`) + 아래줄 `text-caption text-muted` `DeviationValue`(`deviationPercentagePoint`, 단위 `%p`) |
+
+  - **컬럼 10에 `tone="neutral"`을 쓰는 이유는 4.21.2 표에 있다.** 여기에 초록/빨강을 칠하면 "쉬운 강의 = 좋은 강의"라는 없는 판단이 생긴다.
+  - 모바일 카드 스택: 상단 = 강의명(title) + 판정 배지(badge). 판정이 없으면 상단 우측이 비는데 **정상**이다(빈 배지를 만들지 않는다).
+
+- **각주**
+  1. 인플레이션 판정 근거 문구
+  2. 난이도 이상치 판정 근거 문구
+  3. `수강생이 1~2명인 강의도 그대로 표시합니다. 통계가 불안정할 수 있으니 인원 열을 함께 보세요.` (spec 가정 27)
+  4. `— 는 수강생이 1명 이하여서 표준편차를 계산할 수 없는 값입니다.` (`null` 있을 때만)
+
+- **반응형**
+
+| | 모바일 (<640) | 태블릿 (≥768) | 데스크탑 (≥1024) |
+|---|---|---|---|
+| 스트립 | 1열 | `sm:grid-cols-2` | `lg:grid-cols-4` |
+| 표 | 행 카드 스택. 판정 배지는 카드 상단 우측, 2개면 `flex-wrap`으로 줄바꿈 | 표 `min-w-table-lg`. 판정 컬럼 `whitespace-normal`(배지 2개가 세로로 쌓일 수 있게) | 동일 |
+| 편차 컬럼 | 2줄(점 / %p) | 2줄 유지 | 2줄 유지 — 한 줄로 합치면 `+2.1점 (+2.1%p)`가 되어 두 값이 같은 것으로 오해된다 |
+
+---
+
+### 4.25 ⑥ 학과 × 강의 교차표 — `DepartmentLectureMatrixSection`
+
+> 데이터: `GET /dashboard/department-lecture-matrix` → `DepartmentLectureMatrixResponseDto`
+> 앵커 `#department-lecture-matrix` · 그룹 B · 아이콘 **`GridIcon`(신규)**
+
+- **목적**: ④와 ⑤를 곱한 축. **편차 열이 이 섹션의 존재 이유**다.
+- **제목/설명**
+  - 제목 `학과 × 강의 교차표`
+  - 설명 `같은 강의를 들은 학과끼리 비교합니다. 편차는 강의 난이도의 영향을 걷어낸 값이라 **서로 다른 강의의 칸끼리 비교해도 됩니다.**`
+    → spec 3.7 (6)이 "이 문장이 없으면 편차 컬럼은 그냥 또 하나의 숫자로 읽힌다"고 한 부분. **설명문에서 이 문장을 빼지 말 것.**
+- **빈 상태**: `rows.length === 0` → `"집계할 강의가 없습니다."` / `emptyIcon=<GridIcon/>`
+- **행 필터**: `cells.length === 0`인 행은 **렌더하지 않는다**(spec 3.7 (6)).
+
+- **열 축(학과 목록)을 클라이언트가 만든다 — ⚠️ 응답에 없다**
+
+```ts
+// 응답에 "학과 축" 필드가 없다. rows[].cells[] 에서 유도해야 한다.
+// 학과명 가나다순으로 고정한다 — 서버가 각 행의 cells 를 평균 내림차순으로 주므로
+// "처음 등장한 순서"를 쓰면 첫 행의 성적에 따라 열 순서가 흔들려 재현성이 없다.
+const departments = Array.from(
+  new Map(rows.flatMap((r) => r.cells).map((c) => [c.departmentId, c])).values(),
+).sort((a, b) => a.departmentName.localeCompare(b.departmentName, "ko"));
+```
+  > 이 결정은 **디자인 가정**이다(§8에 기록). 열 순서가 데이터에 따라 매번 바뀌면 사용자가 표를 읽는 법을 익힐 수 없다.
+
+- **`DataTable` 재사용 + 동적 `columns`**
+
+| 컬럼 | 구성 |
+|---|---|
+| `columns[0]` 강의 | `mobilePriority: "title"`. 셀 = `<div class="min-w-matrix-head">` 안에 강의명(`text-body-sm font-medium text-primary`) + 아래 `text-caption text-muted` `{formatTerm(term)} · {studentCount}명 · 평균 {averageTotalScore}점` |
+| `columns[1..n]` 학과 | `align: "right"`, `mobilePriority: "full"`, `header` = 학과명. 셀 = 아래 구조 |
+
+- **셀 구조 (데이터 셀)**
+
+```html
+<div class="min-w-matrix-cell text-right leading-tight">
+  <p class="text-body-sm font-medium tabular-nums text-primary">78.3</p>
+  <p class="text-caption text-muted tabular-nums">12명</p>
+  <p><DeviationValue value={deviationFromLectureAverage} tone="evaluative" unit="점"
+                     srLabel={{up:"강의 평균보다 높음", down:"강의 평균보다 낮음", flat:"강의 평균과 같음"}}/></p>
+</div>
+```
+- **해당 학과가 그 강의를 수강하지 않은 칸**: `<span class="text-muted" aria-hidden>—</span>` + `<span class="sr-only">수강 없음</span>`.
+  ⚠️ 이것은 4.21.3의 "계산 불가"와 **다른 의미**이므로 `sr-only` 문구를 반드시 구분한다. 각주에도 두 `—`의 차이를 적는다.
+- **편차를 색으로만 구분하지 않는 방법 (요구사항 3 대응)** — 4중 단서
+  1. **부호 문자** `+` / `−`(U+2212)
+  2. **방향 글리프** `▲` / `▼` / `=`
+  3. **숫자 값** (크기)
+  4. 색 (`tone="evaluative"`) — **네 번째 단서일 뿐**
+  → 흑백 인쇄·색맹 환경에서도 1~3으로 완전히 읽힌다. **셀 배경 히트맵은 도입하지 않는다**(0.6 "넣지 않은 것" 참고).
+
+- **`props`**: `mobile="stack"`, `tableMinWidth="table-md"`(셀 min-width가 실질 폭을 결정하므로 표 최소폭은 낮게), `stickyFirstColumn`, `showScrollHint`, `surface="plain"`, 정렬 UI 없음.
+- **`stickyFirstColumn` 확인 사항**: `DataTable`은 이미 첫 `th`/`td`에 `md:sticky md:left-0 md:z-raised` + 배경 + 우측 경계선을 준다. **추가 구현이 필요 없다.**
+
+- **각주**
+  1. `편차는 그 강의의 전체 평균 대비 값입니다. 강의 난이도의 영향이 상쇄되어 있어 다른 강의의 칸과 비교해도 됩니다.`
+  2. `— 는 해당 학과 학생이 그 강의를 수강하지 않았다는 뜻입니다.`
+  3. `학과 열은 학과명 가나다순입니다.`
+
+- **반응형**
+
+| | 모바일 (<640) | 태블릿 (≥768) | 데스크탑 (≥1024) |
+|---|---|---|---|
+| 렌더 | **행 카드 스택** — 강의 1장 = 카드 1장. 상단에 강의명+학기+전체 평균, 본문에 학과별 값이 `col-span-2` 행으로 **전부** 나열(`mobilePriority: "full"`) | `md:` 진짜 표. 첫 컬럼 `min-w-matrix-head` sticky, 데이터 셀 `min-w-matrix-cell` | 동일 |
+| 가로 스크롤 | 없음(카드 스택) | `.scroll-x` 안에서만. `showScrollHint` 문구 노출 | **열이 많으면 데스크탑에서도 스크롤이 남는다 — 정상 동작이다.** 페이지 본문은 절대 밀리지 않는다 |
+| 표 폭 | — | 학과 수 × `min-w-matrix-cell`(112px) + `min-w-matrix-head`(176px) | 동일 |
+
+  > **학과가 20개를 넘으면?** 표 폭이 2,400px을 넘어 스크롤이 길어진다. 이번 라운드는 그대로 둔다(spec 9절 미결).
+  > 다만 `showScrollHint`와 sticky 첫 컬럼이 있어 **길을 잃지는 않는다.** 실데이터 확인 후 "행 단위 아코디언"으로 전환할지 결정한다(§8).
+
+---
+
+### 4.26 ⑦ 평가항목별 분석 — `ComponentAnalysisSection`
+
+> 데이터: `GET /dashboard/component-analysis` → `ComponentAnalysisResponseDto`
+> 앵커 `#component-analysis` · 그룹 C · 아이콘 `ClipboardIcon`(기존)
+
+- **목적**: 점수의 **내부 구성**으로 관점이 바뀌는 지점. 이 섹션만 "숫자 + 그 숫자를 풀어 쓴 문장"이 짝을 이룬다.
+- **제목/설명**
+  - 제목 `평가항목별 분석`
+  - 설명 `시험과 과제 중 어디서 점수가 나왔는지, 학기 전반부와 후반부 중 언제 성취가 높았는지 봅니다.`
+- **빈 상태**: `overall.studentCount === 0` → `"집계할 성적이 없습니다."` / `emptyIcon=<ClipboardIcon/>`.
+  이때 **`byLecture` 표도 렌더하지 않는다**(spec 3.7 (4)).
+- **⚠️ 절대 금지**: 항목별 **백분율(%) 표시**. 항목별 만점 정보가 API에 없다(spec 3.7 (4), 수용 기준에 명시). 점수 절대값과 **상대 비교**만 보여준다.
+
+#### 4.26.1 `SectionStatStrip` (4칩)
+
+| 칩 | 라벨 | 값 | tone |
+|---|---|---|---|
+| 1 | 집계 대상 | `1,284건` | `neutral` |
+| 2 | 시험 평균 | `48.2점` | `neutral` |
+| 3 | 과제 평균 | `45.0점` | `neutral` |
+| 4 | 향상 학생 | `748명` + `Badge tone="accent"` `58.3%` | `success` |
+
+#### 4.26.2 항목 4개 가로 막대 (일반화 `DistributionBar` 재사용)
+
+- 항목: 중간고사 / 중간과제 / 기말고사 / 기말과제 (`midtermExamAverage` …)
+- `fillRatio = value / Math.max(...4개 값) * 100` — **상대 폭**이다. 화면에 **%를 출력하지 않는다.**
+- `valueText = "{formatNumber(value,1)}점"`, `tone = "accent"` 고정, `emphasized = 최고 항목`
+- `label = <Badge tone="neutral" className="min-w-touch justify-center">중간고사</Badge>`
+- 막대 위 소제목: `<h4 class="mb-2 text-body font-semibold text-primary">평가항목별 평균</h4>` +
+  `<p class="mb-3 text-caption text-muted">막대 길이는 4개 항목 중 가장 높은 값을 기준으로 한 상대 비교입니다. 항목별 만점 정보가 없어 백분율은 제공하지 않습니다.</p>`
+  → **이 문장이 "왜 %가 없는가"에 대한 화면상의 답이다. 빼지 말 것.**
+
+#### 4.26.3 해석 블록 2개 — 숫자를 문장으로 푼다
+
+spec 3.7 (4)는 "**숫자와 부호만 던지지 않는다**"고 요구한다. 부호의 의미를 문장으로 쓴다.
+
+```html
+<div class="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2">
+  <!-- ① 시험 vs 과제 -->
+  <div class="rounded-lg bg-surface-sunken p-4">
+    <h4 class="text-caption font-medium text-muted">시험 vs 과제</h4>
+    <p class="mt-1 flex flex-wrap items-baseline gap-2">
+      <span class="text-title font-semibold text-primary lg:text-display">
+        <DeviationValue value={examVsAssignmentGap} tone="neutral" unit="점"/>
+      </span>
+    </p>
+    <p class="mt-2 text-body text-secondary">시험에서 과제보다 <b class="font-semibold text-primary">3.2점</b> 더 득점했습니다.</p>
+    <p class="mt-1 text-caption text-muted">시험 평균 48.2점 · 과제 평균 45.0점</p>
+  </div>
+
+  <!-- ② 전반부 vs 후반부 -->
+  <div class="rounded-lg bg-surface-sunken p-4">
+    <h4 class="text-caption font-medium text-muted">전반부 vs 후반부</h4>
+    <p class="mt-1 flex flex-wrap items-baseline gap-2">
+      <span class="text-title font-semibold text-primary lg:text-display">
+        <DeviationValue value={improvement} tone="evaluative" unit="점"
+                        srLabel={{up:"후반부가 더 높음", down:"후반부가 더 낮음", flat:"전후반이 같음"}}/>
+      </span>
+      <Badge tone="accent">향상 학생 748명 (58.3%)</Badge>
+    </p>
+    <p class="mt-2 text-body text-secondary">후반부(기말)가 전반부(중간)보다 <b class="font-semibold text-primary">2.4점</b> 높습니다 — 학기가 갈수록 성취가 올랐습니다.</p>
+    <p class="mt-1 text-caption text-muted">전반부 평균 46.1점 · 후반부 평균 48.5점</p>
+  </div>
+</div>
+```
+
+- **문장 분기 (부호별 문구 — 이대로 쓸 것)**
+
+| 값 | 문구 |
+|---|---|
+| `examVsAssignmentGap > 0` | `시험에서 과제보다 N점 더 득점했습니다.` |
+| `examVsAssignmentGap < 0` | `과제에서 시험보다 N점 더 득점했습니다.` |
+| `= 0` (\|v\|<0.05) | `시험과 과제의 평균이 같습니다.` |
+| `improvement > 0` | `후반부(기말)가 전반부(중간)보다 N점 높습니다 — 학기가 갈수록 성취가 올랐습니다.` |
+| `improvement < 0` | `후반부(기말)가 전반부(중간)보다 N점 낮습니다 — 학기 후반에 성취가 떨어졌습니다.` |
+| `= 0` | `전반부와 후반부의 평균이 같습니다.` |
+
+  - 문장 안의 `N`은 **절댓값**이다(문장이 이미 방향을 말하므로 부호를 또 붙이면 이중 부정이 된다).
+  - `tone` 배정 근거: 시험 vs 과제는 **어느 쪽이 우월하다고 말할 수 없으므로 `neutral`**, 전반→후반은 **향상/하락이 도메인상 명확하므로 `evaluative`**(4.21.2).
+
+#### 4.26.4 `byLecture` 표
+
+- `DataTable` (`mobile="stack"`, `tableMinWidth="table-lg"`, `surface="plain"`, 정렬 UI 없음, **서버 정렬(학기 → 강의명) 유지**)
+- 소제목 `<h4 class="mt-6 mb-3 text-body font-semibold text-primary">강의별 평가항목</h4>`
+- 컬럼: 강의(`title`) / 학기(`full`) / 인원 / 중간고사 / 중간과제 / 기말고사 / 기말과제 / 시험−과제(`DeviationValue neutral`) / 전반→후반(`DeviationValue evaluative`) / 향상 학생(`{n}명 ({r}%)`)
+- `byLecture`가 길어질 수 있으므로 **표 컨테이너 안에서만 가로 스크롤**(`DataTable`이 `.scroll-x`로 이미 보장). 페이지 가로 스크롤 금지.
+- `byLecture.length === 0`이면 이 블록만 렌더하지 않는다(섹션 전체를 빈 상태로 만들지 않는다 — `overall`은 값이 있다).
+
+- **반응형 (4.26 전체)**
+
+| | 모바일 (<640) | 태블릿 (≥768) | 데스크탑 (≥1024) |
+|---|---|---|---|
+| 스트립 | 1열 | `sm:grid-cols-2` | `lg:grid-cols-4` |
+| 항목 막대 | 4행 세로. 라벨 칩 `min-w-touch`, 막대 `flex-1 min-w-0` | 동일 | 동일 |
+| 해석 블록 | 1열 세로 스택 | `md:grid-cols-2` | `md:grid-cols-2` 유지 (**3열 금지** — 문장이 길어 줄바꿈이 심해진다) |
+| 해석 블록 큰 숫자 | `text-title`(20) | 동일 | `lg:text-display`(30) |
+| `byLecture` | 행 카드 스택(10필드 전부) | 표 `min-w-table-lg` | 동일 |
+
+---
+
+### 4.27 ⑧ 학기별 추이 — `TermTrendSection`
+
+> 데이터: `GET /dashboard/term-trend` → `TermTrendResponseDto` (`breakdown` 미전송 → `departmentSeries`는 항상 `[]`)
+> 앵커 `#term-trend` · 그룹 C · 아이콘 **`TrendingUpIcon`(신규)** · 배지 `상세`
+
+- **목적**: 유일한 **시간 축** 섹션. 따라서 **이 섹션에서만 "직전 대비 증감"이 데이터로 성립한다.**
+- **제목/설명**
+  - 제목 `학기별 추이`
+  - 설명 `학기가 지나며 성적 건수와 평균이 어떻게 변했는지 봅니다. 아래 「학기별 요약」의 상세판입니다.`
+- **빈 상태**: `points.length === 0` → `"집계할 학기가 없습니다."` / `emptyIcon=<TrendingUpIcon/>`
+- **`points.length === 1`**: 빈 상태가 아니다. **차트를 그리되** `<polyline>` 없이 막대 1개 + 마커 1개만 그리고,
+  차트 위에 `AlertBanner tone="info" title="비교할 학기가 1개뿐입니다."` (spec 3.7 (5)).
+- **`departmentSeries`**: 항상 빈 배열이므로 **학과별 시리즈 영역·범례를 렌더하지 않는다.** 빈 차트·빈 범례를 그리지 않는다(spec 3.7 (5)).
+
+- **`SectionStatStrip` (4칩)**
+
+| 칩 | 라벨 | 값 | tone | 계산 |
+|---|---|---|---|---|
+| 1 | 집계 학기 | `4개` | `neutral` | `points.length` |
+| 2 | 최근 학기 | `26년 1학기 (2610)` | `neutral` | `points.at(-1).term` → `formatTerm` |
+| 3 | 최근 학기 평균 | `74.6점` | `accent` | `points.at(-1).averageTotalScore` |
+| 4 | 직전 학기 대비 | `DeviationValue tone="evaluative"` `▲+1.8점` | 값의 부호에 따라 `success`/`danger`/`neutral` | `points.at(-1) − points.at(-2)`. `points.length < 2`면 **칩 자체를 렌더하지 않는다** |
+
+  > 칩 4가 **4.14가 보류한 "증감 배지"의 유일한 정당한 사용처**다. 지어낸 값이 아니라 응답에 있는 두 값의 차다.
+
+#### 4.27.1 `TermTrendChart` — 세로 막대(건수) + 꺾은선(평균점수), **양쪽 y축**
+
+- **왜 양축인가**: 건수(정수, 수십~수천)와 평균점수(0~100 근처)는 단위가 완전히 다르다. 한 축에 넣으면 한쪽이 바닥에 눌린다.
+- **`GradeComboChart`와의 차이 — 우축을 자동 확대하고 그 사실을 밝힌다**
+
+| | `GradeComboChart` | `TermTrendChart` |
+|---|---|---|
+| 축 그리드 | `grid-cols-chart-axis` (2열) | ★ **`grid-cols-chart-axis-2y`** (3열: 좌 눈금 / 플롯 / 우 눈금) |
+| 우축 | `0~100` 고정, 눈금 라벨 없음(범례 문구로 대신) | **데이터 범위에 맞춰 자동 확대**, 우축 눈금 라벨 **표시** |
+| 우축 정직성 | 0 기준이라 문제없음 | **0에서 시작하지 않으므로 반드시 문구로 밝힌다**(아래) |
+
+  > **왜 0~100 고정을 안 쓰는가**: 학기 평균은 보통 65~85 사이에 몰린다. 0~100 축에서는 4학기 추이가 **거의 직선**이 되어 "추이"라는 섹션의 목적이 사라진다.
+  > **왜 그래도 정직한가**: 축 범위를 눈금 라벨로 표시하고, 차트 아래에 `오른쪽 축은 0이 아니라 {lineMin}점부터 시작합니다(변화를 크게 보이게 한 확대입니다).` 를 **항상** 쓴다.
+  > 확대 자체가 문제가 아니라 **확대를 숨기는 것**이 문제다.
+
+- **좌표 상수**
+
+```ts
+const VB_W = 320;
+const VB_H = 160;
+const GRID_LINES = 4;
+const TICK_SEGMENTS = GRID_LINES - 1;      // 3
+const BAR_RATIO = 0.5;                     // 학기 = 이산 범주 → GradeComboChart 와 같은 0.5
+const BAR_MIN_W = 6;
+const BAR_MAX_W = 40;
+const BAR_MIN_H = 2;
+const BAR_RX = 2;
+const MARKER_R = 4;
+const LINE_W = 2;
+const GRID_W = 1;
+const AXIS_STEP = 5;                       // 우축 눈금을 5점 단위로 맞춘다(읽기 좋은 값)
+const AXIS_PAD_RATIO = 0.25;               // 데이터 범위의 25% 를 위아래 여백으로
+const AXIS_FLAT_PAD = 10;                  // 전 학기 값이 같을 때(범위 0) 쓸 고정 여백
+const COORD_DIGITS = 2;
+const MIN_POINTS_FOR_LINE = 2;
+```
+
+- **좌표 계산식 — frontend-dev 필독**
+
+```ts
+const n = points.length;                    // 서버가 학기 오름차순으로 준다. 재정렬 금지
+
+// ① x축: 학기 개수만큼 균등 밴드. 막대·마커 모두 밴드 **중앙**(시계열이므로 경계가 아니다)
+const band    = VB_W / n;
+const barW    = Math.min(Math.max(band * BAR_RATIO, BAR_MIN_W), BAR_MAX_W);
+const centerX = (i: number) => band * (i + 0.5);
+const barX    = (i: number) => centerX(i) - barW / 2;
+
+// ② 좌축(막대, studentCount): 0 ~ maxCount. 콤보 차트와 동일한 규칙 + 동일한 0 나눗셈 방어
+const rawMax   = Math.max(...points.map((p) => p.studentCount));
+const maxCount = rawMax > 0 ? Math.ceil(rawMax / TICK_SEGMENTS) * TICK_SEGMENTS : 1;
+const barH = (c: number) => (c > 0 ? Math.max((c / maxCount) * VB_H, BAR_MIN_H) : 0);
+const barY = (c: number) => VB_H - barH(c);
+
+// ③ 우축(라인, averageTotalScore): **자동 확대**. 아래 4줄이 이 차트의 유일한 새 로직이다.
+const values  = points.map((p) => p.averageTotalScore);
+const dataMin = Math.min(...values);
+const dataMax = Math.max(...values);
+const span    = dataMax - dataMin;
+const pad     = span > 0 ? span * AXIS_PAD_RATIO : AXIS_FLAT_PAD;  // 전부 같은 값이면 선이 축에 붙는다
+//    0 아래 / 만점 위로는 넘어가지 않게 자르고, 5점 눈금에 스냅한다.
+const lineMin = Math.max(0, Math.floor((dataMin - pad) / AXIS_STEP) * AXIS_STEP);
+const lineMax = Math.min(totalScoreMax, Math.ceil((dataMax + pad) / AXIS_STEP) * AXIS_STEP);
+//    lineMax === lineMin (모든 값이 0 등) 이면 0 나눗셈이 되므로 최소 1스텝을 보장한다. **삭제 금지**
+const lineSpan = lineMax > lineMin ? lineMax - lineMin : AXIS_STEP;
+
+const lineY = (v: number) => VB_H - ((v - lineMin) / lineSpan) * VB_H;
+//    ↑ v === lineMin → y = 160(바닥) / v === lineMax → y = 0(천장)
+
+// ④ 꺾은선 좌표
+const linePoints = points
+  .map((p, i) => `${round(centerX(i))},${round(lineY(p.averageTotalScore))}`)
+  .join(" ");
+
+// ⑤ 좌·우 눈금 (같은 분모 TICK_SEGMENTS)
+const gridY      = (k: number) => VB_H - (k / TICK_SEGMENTS) * VB_H;
+const leftTicks  = [3, 2, 1, 0].map((k) => Math.round((maxCount * k) / TICK_SEGMENTS));          // 건수(위→아래)
+const rightTicks = [3, 2, 1, 0].map((k) => lineMin + (lineSpan * k) / TICK_SEGMENTS);            // 점수(위→아래)
+//    rightTicks 는 formatNumber(v, 0) 으로 표기한다(소수점이 있으면 눈금이 지저분해진다).
+```
+
+- **DOM 구조 (3열 축 그리드)**
+
+```html
+<figure class="flex min-w-0 flex-col gap-3">
+  <figcaption class="sr-only">…</figcaption>
+
+  <div class="grid grid-cols-chart-axis-2y gap-x-2 gap-y-1">
+    <!-- 1열: 좌축 눈금(성적 건수) -->
+    <ul aria-hidden="true" class="flex h-chart flex-col justify-between text-micro leading-none tabular-nums text-muted md:h-chart-lg">
+      <li class="-my-1.5 text-right">…</li> …
+    </ul>
+
+    <!-- 2열: 플롯 -->
+    <svg viewBox="0 0 320 160" preserveAspectRatio="none"
+         class="h-chart w-full overflow-visible md:h-chart-lg" aria-hidden="true" focusable="false"> … </svg>
+
+    <!-- 3열: 우축 눈금(평균 합계점수). text-left 로 플롯 쪽에 붙인다 -->
+    <ul aria-hidden="true" class="flex h-chart flex-col justify-between text-micro leading-none tabular-nums text-muted md:h-chart-lg">
+      <li class="-my-1.5 text-left">…</li> …
+    </ul>
+
+    <!-- 2행: 좌 스페이서 / x축 라벨 / 우 스페이서 -->
+    <div aria-hidden="true"></div>
+    <ul aria-hidden="true" class="grid auto-cols-fr grid-flow-col">
+      <li class="min-w-0 truncate px-0.5 text-center text-micro font-medium text-secondary sm:text-caption">26-1</li> …
+    </ul>
+    <div aria-hidden="true"></div>
+  </div>
+
+  <p class="text-micro text-muted">오른쪽 축은 0이 아니라 65점부터 시작합니다(변화를 크게 보이게 한 확대입니다).</p>
+  <ul class="flex flex-wrap items-center gap-x-4 gap-y-1"> …범례… </ul>
+</figure>
+```
+  - **`-my-1.5` 트릭은 좌·우 눈금 `<li>` 양쪽 모두에 적용**한다(4.15.2 주석과 동일한 이유).
+  - SVG 그리기 순서·`preserveAspectRatio="none"`·`vector-effect="non-scaling-stroke"`는 앞의 두 차트와 **완전히 동일**하다.
+  - 막대 색 `fill-accent` 단색(학기에는 좋고 나쁨이 없다). 라인·마커 `stroke-chart-line` + `fill-surface`.
+
+- **x축 라벨 — 짧은 학기 라벨이 필요하다**
+
+`formatTerm("2610")` → `"26년 1학기 (2610)"` 는 x축에 절대 들어가지 않는다. → **`lib/format.ts`에 `formatTermShort`를 추가**한다.
+
+| 입력 | `formatTerm` (기존, 표·캡션용) | `formatTermShort` (신규, 차트 축용) |
+|---|---|---|
+| `2610` | `26년 1학기 (2610)` | `26-1` |
+| `2611` | `26년 여름 계절학기 (2611)` | `26-여름` |
+| `2620` | `26년 2학기 (2620)` | `26-2` |
+| `2621` | `26년 겨울 계절학기 (2621)` | `26-겨울` |
+| 규칙 밖 | 원문 그대로 | 원문 그대로 |
+
+  - **정보 손실이 아니다**: 전체 라벨은 바로 아래 학기 표(4.27.2)와 `<figcaption>`에 그대로 있다.
+  - `formatTermShort`는 기존 `formatTerm`과 **같은 `SEMESTER_LABELS` 상수를 공유**한다(두 벌로 갈라지면 라벨이 어긋난다).
+
+- **범례**
+
+| 항목 | 스와치 | 라벨 |
+|---|---|---|
+| 막대 | `<span aria-hidden class="h-3 w-3 rounded-sm bg-accent"/>` | `성적 건수 (건)` |
+| 라인 | 인라인 SVG 스와치(`stroke-chart-line`) | `평균 합계점수 (점)` + `text-micro text-muted` `{lineMin}~{lineMax} 확대` |
+
+- **엣지케이스**
+
+| 상황 | 처리 |
+|---|---|
+| `points.length === 1` | `<polyline>` 미렌더, 막대 1개 + 마커 1개. 차트 위 `AlertBanner tone="info"` "비교할 학기가 1개뿐입니다." |
+| 모든 학기 평균이 같음 (`span === 0`) | `pad = AXIS_FLAT_PAD(10)` → 라인이 플롯 중앙 부근의 수평선이 된다. **정상이며 "변화 없음"이라는 정확한 표현**이다 |
+| `dataMin - pad < 0` | `Math.max(0, …)`으로 잘린다 |
+| `dataMax + pad > totalScoreMax` | `Math.min(totalScoreMax, …)`으로 잘린다 |
+| `lineMax === lineMin` | `lineSpan = AXIS_STEP` 방어. **삭제 금지** |
+| `studentCount`가 전부 0 | `maxCount = 1` 방어. 막대는 안 그려지고 라인만 남는다 |
+| 학기 12개 초과 | 밴드가 좁아져 `barW`가 `BAR_MIN_W`까지 축소. x축 라벨 `truncate`. **가로 스크롤 없음** |
+
+- **접근성**
+  - `<figcaption class="sr-only">`: `학기별 추이 그래프입니다. 세로 막대는 학기별 성적 건수(건), 겹쳐 그린 꺾은선은 학기별 평균 합계점수(점)이며 오른쪽 축은 {lineMin}점부터 {lineMax}점까지 확대되어 있습니다. 학기별 정확한 값은 아래 표에서 확인할 수 있습니다.`
+  - `<svg aria-hidden="true" focusable="false">`, 양쪽 눈금·x축 라벨 모두 `aria-hidden`. **범례와 확대 안내 문구는 `aria-hidden`이 아니다.**
+
+#### 4.27.2 학기 표 (차트 아래)
+
+- `DataTable` (`mobile="stack"`, `tableMinWidth="table-md"`, `surface="plain"`, 정렬 UI 없음, 서버 순서 유지)
+- 컬럼: 학기(`title`, `formatTerm` 전체 라벨) / 성적 건수 / 평균 합계점수 / 평균 성취도(%) / 평균 평점 / **직전 학기 대비**
+- **직전 학기 대비 셀**
+  - `i === 0`: `<span class="text-muted" aria-hidden>—</span><span class="sr-only">비교할 직전 학기 없음</span>`
+  - `i > 0`: `<DeviationValue value={points[i].averageTotalScore - points[i-1].averageTotalScore} tone="evaluative" unit="점" srLabel={{up:"직전 학기보다 상승", down:"직전 학기보다 하락", flat:"직전 학기와 동일"}}/>`
+  - **이 값은 응답에 없다.** 하지만 **응답에 있는 두 값의 뺄셈**이므로 지어낸 수치가 아니다. 각주에 계산 방식을 밝힌다.
+- **각주**
+  1. `직전 학기 대비 값은 표에 있는 두 학기의 평균 합계점수를 뺀 값입니다.`
+  2. `그래프 오른쪽 축은 변화를 크게 보이게 하기 위해 0이 아닌 값에서 시작합니다.`
+
+- **반응형 (4.27 전체)**
+
+| | 모바일 (<640) | 태블릿 (≥768) | 데스크탑 (≥1024) |
+|---|---|---|---|
+| 스트립 | 1열 | `sm:grid-cols-2` | `lg:grid-cols-4` |
+| 차트 | `h-chart`(160). 3열 축 그리드(좌 눈금 ≈20px + 우 눈금 ≈24px + 플롯) — 360px에서 플롯 ≈270px 확보 | `md:h-chart-lg`(192) | `md:h-chart-lg`, 풀폭 |
+| x축 라벨 | `text-micro` `26-1` | `sm:text-caption` | `sm:text-caption` |
+| 표 | 행 카드 스택(6필드 전부) | 표 `min-w-table-md` | 동일 |
+| 차트·표 배치 | 세로 스택 | 세로 스택 | **세로 스택 유지** — 좌우로 쪼개면 차트 폭이 반토막 나 추이가 안 보인다 |
+
+---
+
+### 4.28 ⑨ 학생 종합 성적 랭킹 — `StudentRankingSection`
+
+> 데이터: `GET /dashboard/student-ranking` → `StudentRankingResponseDto` (요청에 `limit` 고정 전송)
+> 앵커 `#student-ranking` · 그룹 D · 아이콘 **`TrophyIcon`(신규)**
+
+- **목적**: 집계에서 **개인 단위로 내려가는 지점.** 여기부터 학번·이름이 보인다.
+- **제목/설명**
+  - 제목 `학생 종합 성적 랭킹`
+  - 설명 `평균 평점이 높은 상위 {items.length}명입니다. 수강 강의 수를 함께 보세요.`
+    → **표시 인원은 `items.length`에서 계산한다.** spec 5.5의 `limit` 상수가 10이든 20이든 문구가 어긋나지 않는다.
+- **빈 상태**: `items.length === 0` → `"표시할 랭킹이 없습니다."` / `emptyIcon=<TrophyIcon/>`
+- **정렬**: 서버 순서 고정. `rank`를 **클라이언트가 다시 매기지 않는다**(spec 3.7 (7)).
+
+- **`SectionStatStrip` (3칩, `columns={3}`)**
+
+| 칩 | 라벨 | 값 | tone |
+|---|---|---|---|
+| 1 | 표시 인원 | `상위 10명` | `neutral` |
+| 2 | 최고 평균 평점 | `4.32` + `Badge tone="neutral"` `홍길동` | `success` |
+| 3 | 최다 수강 | `6과목` | `neutral` |
+
+#### 4.28.1 `RankBadge` — 순위 배지
+
+- **props**: `rank: number`
+- 톤: `rank === 1` → `success` / `rank === 2 || rank === 3` → `accent` / 그 외 → `neutral`
+- **숫자가 항상 1차 단서**다. 왕관·메달 아이콘을 쓰지 않는다(글리프가 순위를 대체하면 4위 이하와 문법이 갈린다).
+- 클래스: `Badge` 그대로 + `min-w-touch justify-center tabular-nums`
+- 낭독: `<span class="sr-only">순위 </span>{rank}<span class="sr-only">위</span>`
+
+#### 4.28.2 표
+
+- `DataTable` (`mobile="stack"`, `tableMinWidth="table-md"`, `surface="plain"`, 정렬 UI 없음)
+
+| # | 컬럼 | align | `mobilePriority` | 셀 |
+|---|---|---|---|---|
+| 1 | 순위 | left | `badge` | `<RankBadge rank={rank}/>` |
+| 2 | 학생 | left | `title` | `<div class="flex items-center gap-2"><InitialAvatar name={studentName}/><div class="min-w-0"><p class="truncate text-body-sm font-medium text-primary">{studentName}</p><p class="text-caption text-muted tabular-nums">{studentNumber}</p></div></div>` |
+| 3 | 학과 | left | `full` | `departmentName` |
+| 4 | 수강 강의 수 | right | — | `{lectureCount}과목` |
+| 5 | 평균 평점 | right | — | `formatNumber(averageGpa, 2)` |
+| 6 | 평균 합계점수 | right | — | `formatNumber(averageTotalScore, 1)` |
+| 7 | 평균 성취도 | right | — | `formatNumber(averagePercentage, 1)%` |
+
+- **모바일 카드 스택 압축 전략 (요구사항 5 대응)** — **숨기는 필드는 0개다.**
+  - 카드 **상단**: `title`(이니셜 + 이름 + 학번) 좌측 / `badge`(순위) 우측 → **"누가 몇 위인가"가 한눈에.**
+  - 카드 **본문**(`<dl grid-cols-2>`): 학과(`full`, 2열 차지) → 수강 강의 수 → 평균 평점 → 평균 합계점수 → 평균 성취도.
+  - 우선순위 근거: 이 섹션에서 사용자가 찾는 것은 **① 누구 ② 몇 위 ③ 몇 과목을 듣고 얻은 순위인가**(spec 가정 28의 왜곡 경고)다. 그 3개가 상단 2줄 안에 들어간다.
+
+- **각주** (spec 3.7 (7) · 가정 28·29)
+  1. `동점자는 같은 순위이며 다음 순위는 건너뜁니다.`
+  2. `이름·학과는 성적 데이터 기준의 대표값이며 학적상 소속을 보증하지 않습니다.`
+  3. `1과목만 수강한 학생도 포함됩니다. 수강 강의 수 열을 함께 보세요.`
+  4. `학번·이름이 포함된 명단입니다. 화면 공유·캡처에 주의하세요.`
+
+- **반응형**
+
+| | 모바일 (<640) | 태블릿 (≥768) | 데스크탑 (≥1024) |
+|---|---|---|---|
+| 스트립 | 1열 | `sm:grid-cols-2` | `lg:grid-cols-3` |
+| 목록 | 행 카드 스택(위 압축 전략) | 표 `min-w-table-md`, `.scroll-x` | 동일. 대부분 스크롤 없음 |
+| 이니셜 아바타 | `h-8 w-8` | 동일 | 동일 |
+| 각주 | 1열, `text-caption` 유지 | 동일 | 동일 |
+
+---
+
+### 4.29 ⑩ 학사경고 위험군 학생 — `AtRiskStudentsSection`
+
+> 데이터: `GET /dashboard/at-risk-students` → `AtRiskStudentsResponseDto` (요청에 `limit=20` 고정 전송)
+> 앵커 `#at-risk-students` · 그룹 D · 아이콘 **`AlertTriangleIcon`(신규)**
+
+- **목적**: **행동을 요구하는 유일한 섹션.** 그래서 맨 마지막에 온다.
+- **제목/설명**
+  - 제목 `학사경고 위험군 학생`
+  - 설명 `F학점 {failCountAtLeast}개 이상 **또는** 평균 성취도 {averageBelow}% 미만인 학생입니다.`
+    → **`또는`을 `<b class="font-semibold text-primary">`로 강조한다.** spec 3.7 (8): AND로 오해하면 명단 크기를 잘못 해석한다.
+    → **기준값은 요청값이 아니라 응답의 `failCountAtLeast` / `averageBelow`** 를 쓴다(서버 기본값이 바뀌어도 안내가 거짓말이 되지 않는다).
+- **빈 상태 — 이 섹션만 톤이 다르다**
+  - `items.length === 0` → `emptyTone="positive"`, `emptyIcon=<ShieldCheckIcon/>`(신규),
+    `emptyTitle="기준에 해당하는 위험군 학생이 없습니다."`, `emptyDescription="현재 기준으로는 학사경고 위험군이 확인되지 않았습니다."`
+  - **에러 톤(빨강)으로 그리지 않는다**(spec 3.7 (8)). 아이콘 슬롯만 `bg-success-subtle text-success-strong`이고 나머지는 일반 빈 상태와 동일하다.
+
+- **`SectionStatStrip` (3칩, `columns={3}`)**
+
+| 칩 | 라벨 | 값 | tone |
+|---|---|---|---|
+| 1 | 표시 인원 | `20명` | **`danger`** (위험군 맥락) |
+| 2 | 판정 기준 | `F학점 1개 이상 또는 성취도 60% 미만` | `warning` |
+| 3 | F학점 최다 | `4개` + `Badge tone="neutral"` `홍길동` | `danger` |
+
+- **`items.length === limit`일 때 (잘렸을 가능성)** — spec 3.7 (8)
+  - 표 **위**에 `AlertBanner tone="warning"` `title="기준에 해당하는 학생이 더 있을 수 있습니다."`
+    `description="한 번에 최대 {limit}명까지만 표시합니다. 응답에 위험군 총원 정보가 없어 전체 인원은 알 수 없습니다."`
+  - **"N명 중 20명"이라고 쓰지 않는다** — 총원 필드가 없다.
+
+- **표** — `DataTable` (`mobile="stack"`, `tableMinWidth="table-lg"`, `surface="plain"`, 정렬 UI 없음, **서버 순서 = 위험한 순** 유지)
+
+| # | 컬럼 | align | `mobilePriority` | 셀 |
+|---|---|---|---|---|
+| 1 | 학생 | left | `title` | `<InitialAvatar name={studentName} tone="danger"/>` + 이름/학번 2줄 (4.28.2와 동일 구조) |
+| 2 | F학점 | left | `badge` | `<Badge tone="danger" icon="✕">F {failCount}개</Badge>` — `failCount === 0`(성취도 기준으로만 걸린 학생)이면 `<Badge tone="warning">성취도 미달</Badge>` |
+| 3 | 학과 | left | `full` | `departmentName` |
+| 4 | 수강 강의 수 | right | — | `{lectureCount}과목` |
+| 5 | 평균 평점 | right | — | `formatNumber(averageGpa, 2)` |
+| 6 | 평균 합계점수 | right | — | `formatNumber(averageTotalScore, 1)` |
+| 7 | 평균 성취도 | right | — | `formatNumber(averagePercentage,1)%` — **`averageBelow` 미만이면 `text-danger-strong font-semibold`** + `sr-only` "기준 미만" |
+| 8 | 위험 사유 | left | `full` | `riskReasons.map(r => <Badge tone="danger" key={r}>{r}</Badge>)` — `flex flex-wrap gap-1` |
+
+- **위험 사유 렌더 규칙 (spec 3.7 (8))**
+  - **배열 원소를 전부, 서버 문자열 그대로** 표시한다. 2개면 2개 다 보인다. 문구를 클라이언트가 재작성하거나 하나만 고르지 않는다(spec 가정 25).
+  - `whitespace-normal break-words` — 사유가 길어도 잘리지 않는다.
+  - 톤을 `danger`로 통일한다(사유마다 색을 나누면 "어느 사유가 더 나쁜가"라는 없는 축이 생긴다).
+
+- **모바일 카드 스택 압축 전략**
+  - 상단: 이니셜(danger 톤) + 이름/학번 좌측, **F학점 배지 우측** → "누가, 얼마나 위험한가"가 첫 줄.
+  - 본문 2열: 학과(`full`) → 수강 강의 수 → 평균 평점 → 평균 합계점수 → 평균 성취도.
+  - **마지막에 위험 사유 배지들이 `col-span-2` 전체폭**으로 온다 → 카드의 결론이 맨 아래에 놓인다.
+  - **숨기는 필드 0개.**
+
+- **각주**
+  1. `두 조건은 OR입니다. 하나만 해당해도 명단에 포함됩니다.`
+  2. `이름·학과는 성적 데이터 기준의 대표값이며 학적상 소속을 보증하지 않습니다.`
+  3. `학번·이름이 포함된 개인 명단입니다. 화면 공유·캡처에 주의하세요.` (spec 3.7 (8))
+
+- **반응형**
+
+| | 모바일 (<640) | 태블릿 (≥768) | 데스크탑 (≥1024) |
+|---|---|---|---|
+| 스트립 | 1열 | `sm:grid-cols-2` | `lg:grid-cols-3` |
+| 잘림 안내 배너 | 표 위 전체폭 | 동일 | 동일 |
+| 목록 | 행 카드 스택 + 사유 배지 전체폭 | 표 `min-w-table-lg`. 사유 컬럼 `whitespace-normal` | 동일 |
+| 사유 배지 | `flex-wrap`, 2줄 이상 허용 | 동일 | 동일 |
+
+---
+
+### 4.30 ⑪ 요약 통계 3블록 — 재라벨링 (기존 `StatBlock` 유지)
+
+> 데이터: `GET /dashboard/summary`의 `departmentStats` / `termStats` / `lectureStats` (기존)
+> 앵커 `#summary-stats` · 그룹 E
+
+- **구현은 바꾸지 않는다.** 기존 `StatBlock` + `DataTable`을 그대로 쓴다. **바뀌는 것은 제목·배지·설명·앵커 링크 4가지뿐**이다.
+- **왜 바꾸는가**: 같은 지표가 위(상세)와 아래(요약) 두 군데 있다. 제목이 「학과별 통계」/「학과별 학업성취도」로 비슷하면 사용자는 **두 화면이 다른 데이터를 보여준다고 오해**한다(spec 가정 30).
+
+| 기존 | 새 제목 | 배지 | 설명 (`CardHeader.description`) | 앵커 링크 |
+|---|---|---|---|---|
+| 학과별 통계 | **학과별 요약** | `<Badge tone="neutral">요약</Badge>` | 인원수와 평균만 담은 간단 표입니다. | `Button variant="link" size="sm"` **상세 보기** → `#department-achievement` |
+| 학기별 통계 | **학기별 요약** | `요약` | 인원수와 평균만 담은 간단 표입니다. | **상세 보기** → `#term-trend` |
+| 강의별 통계 | **강의별 요약** | `요약` | 인원수와 평균만 담은 간단 표입니다. | **상세 보기** → `#lecture-difficulty` |
+
+- 앵커 링크는 `CardHeader.action` 슬롯에 놓는다(제목 줄 우측 끝).
+- 그룹 E 도입문: `위 상세 분석과 같은 데이터의 축약본입니다. 자세한 지표는 각 카드의 [상세 보기]를 누르세요.`
+- **그림자**: `shadow-card` 유지(그룹 A의 raised 2장과 계층이 유지된다).
+- **`CardHeader as="h3"`** 로 내린다(1.3.2 제목 계층).
+- 빈 배열이면 기존대로 `데이터 없음` 문구. `DashboardSection`으로 감싸지 않는다 — **`summary` 응답의 일부라 섹션 단위 로딩/재시도의 대상이 아니다**(KPI·등급분포와 운명을 같이한다).
+
+---
+
+### 4.31 신규 아이콘 6개 (`components/ui/icons.tsx`)
+
+기존 규칙 그대로: 외부 라이브러리 없이 `stroke="currentColor" fill="none" stroke-width="1.5"` 24×24 viewBox 인라인 SVG.
+**색을 SVG 안에 넣지 않는다**(`currentColor` 고정). 사용처에서 `h-5 w-5 shrink-0`(섹션 헤더) 또는 `h-4 w-4`(스트립 칩)로만 크기를 준다.
+
+| 이름 | 모티프 | 사용처 |
+|---|---|---|
+| `GridIcon` | 3×3 격자 | ⑥ 학과 × 강의 교차표 (섹션 헤더 · 빈 상태) |
+| `TrendingUpIcon` | 우상향 꺾은선 + 화살촉 | ⑧ 학기별 추이 (섹션 헤더 · 빈 상태 · 스트립) |
+| `TrophyIcon` | 트로피 | ⑨ 학생 랭킹 (섹션 헤더 · 빈 상태) |
+| `AlertTriangleIcon` | 삼각형 + 느낌표 | ⑩ 위험군 (섹션 헤더 · 스트립 판정 기준 칩) |
+| `ShieldCheckIcon` | 방패 + 체크 | ⑩ 위험군 **빈 상태(긍정)** 전용 |
+| `FilterOffIcon` | 깔때기 + 사선 | `DashboardSection`의 기준선 문구 앞 (= "필터가 걸려 있지 않다") |
+
+> 6개를 더하면 총 18개가 되어 §8의 "15개를 넘으면 라이브러리 도입 검토" 선을 넘는다.
+> **이번 라운드는 그대로 인라인 SVG로 간다** — 도입 시 색 규칙(`currentColor`)과 스트로크 굵기를 다시 맞춰야 하고, 6개는 아직 손으로 관리 가능한 규모다. §8에 재검토 항목으로 남긴다.
+
+---
+
+## 5. 인터랙션
+
+| 대상 | 전환 | 값 |
+|---|---|---|
+| 버튼/링크/입력 색 변화 | `transition-colors` | `duration-fast (120ms) ease-standard` |
+| 드롭다운 팝오버(표 행 액션 `⋯`) | `animate-scale-in` | 180ms `ease-standard` |
+| **내비 드로어(<lg)** | `animate-slide-in-left` + 백드롭 `animate-fade-in` | 240ms `ease-standard`, 퇴장 `ease-exit` |
+| **사이드바 아코디언 그룹** | **높이 애니메이션 없음.** 펼침/접힘은 즉시 마운트/언마운트하고, 펼쳐지는 `<ul>`에만 `animate-fade-in` | 180ms. 근거: 높이 전환은 reflow를 일으키고(§5 규칙 위반), 스크롤 위치가 튄다 |
+| **아코디언 chevron** | `transition-transform` + `rotate-180` | `duration-base` `ease-standard` |
+| **사이드바 메뉴 항목 색 변화** | `transition-colors` | `duration-fast` |
+| **등급분포 콤보 차트(`GradeComboChart`)** | **애니메이션 없음.** 막대가 자라거나 라인이 그려지는 진입 연출을 두지 않고, 값이 바뀔 때의 전환도 두지 않는다 | — 근거 ①: 대시보드는 진입 즉시 값을 읽는 화면이라 "차오르는" 연출이 판독을 늦춘다. 근거 ②(기술적): `<rect>`의 `y`/`height`는 CSS 전환이 가능하지만 **`<polyline>`의 `points`는 전환되지 않는다.** 막대만 움직이면 라인이 먼저 튀어 **두 계열이 어긋난 프레임**이 보인다. 둘 다 안 움직이는 쪽이 정확하다 |
+| **등급분포 가로 막대 채움 폭**(`DistributionBar`) | `transition-[width]` | `duration-base ease-standard`. 콤보 차트가 정적이므로 **이 전환만 남는다** — 카드 안에서 움직이는 요소가 하나뿐이라 시선이 분산되지 않는다 |
+| 모달(모바일) | `animate-slide-in-bottom` | 240ms |
+| 모달(`md`+) | `animate-scale-in` | 180ms |
+| 토스트 | `animate-toast-in`, 퇴장 fade+translate | 진입 180ms / 퇴장 120ms |
+| 재조회 흐림 | `.is-refetching` opacity 1→0.6 | 180ms |
+| 스켈레톤 | `animate-pulse` | Tailwind 기본 |
+| 정렬 아이콘 토글 | 색·글리프 즉시 교체(애니메이션 없음) | — |
+| 행 hover | `hover:bg-surface-hover` | 120ms |
+
+**규칙**
+- 레이아웃 이동(reflow)을 만드는 애니메이션을 쓰지 않는다. `transform`/`opacity`만 사용.
+- 스켈레톤 → 실제 내용 교체 시 **높이 점프를 최소화**한다. 스켈레톤 행 높이 = 실제 행 높이(`h-4` + 셀 패딩 동일).
+- 로딩 지연이 200ms 미만일 것으로 예상되면 스켈레톤을 띄우지 않는다(깜빡임 방지). 구현: 200ms 디바운스 후 스켈레톤 표시.
+- **`prefers-reduced-motion: reduce`**: `globals.css` 하단에서 전역으로 모든 애니메이션·전환을 0.01ms로 무력화한다. 컴포넌트에서 개별 분기하지 않는다. 드로어·모달은 애니메이션 없이 즉시 나타나며 기능은 동일하다.
+
+### 5.1 확장 분석 8종의 인터랙션 〔2026-08-01 개정 ② 신설〕
+
+| 대상 | 전환 | 값 / 근거 |
+|---|---|---|
+| **`SectionNav` 앵커 이동** | `html { scroll-behavior: smooth }` (전역) | 페이지 **안** 이동임을 알린다. `prefers-reduced-motion`에서는 `globals.css` 하단 블록이 `scroll-behavior: auto !important`로 이미 되돌린다 → **컴포넌트에 분기를 두지 않는다.** 목적지가 sticky 상단바에 가리지 않도록 `section[id] { scroll-margin-top }`을 전역으로 건다 |
+| **`SectionNav` 칩 hover/active** | `transition-colors` | `duration-fast` `ease-standard` |
+| **섹션 스켈레톤 → 실제 내용** | 전환 없음(즉시 교체) | 섹션이 9개라 페이드가 9번 겹치면 화면이 어른거린다. **높이 점프를 막는 것**(스켈레톤 높이 ≒ 실제 높이)이 페이드보다 중요하다 |
+| **섹션 재조회([다시 시도] 후)** | `.is-refetching` opacity 1→0.6 | `duration-base`. 그 섹션에만 적용된다 — **다른 섹션은 흐려지지 않는다** |
+| **`ScoreHistogramChart` / `TermTrendChart`** | **애니메이션 없음** | `GradeComboChart`와 **동일한 근거**(4.15.2 / 5절): ① 대시보드는 진입 즉시 값을 읽는 화면이라 "차오르는" 연출이 판독을 늦춘다 ② `<rect>`의 `y`/`height`는 CSS 전환이 되지만 **`<polyline>`의 `points`는 전환되지 않아** 막대만 움직이고 라인이 튀는 프레임이 보인다. 차트 3종이 전부 정적이어야 문법이 일관된다 |
+| **가로 막대 채움 폭**(`DistributionBar`) | `transition-[width]` | `duration-base ease-standard`. 등급분포·히스토그램·평가항목 3곳 모두 동일 |
+| **`DeviationValue` 색 변화** | 없음 | 값이 바뀌는 상황(재조회)에서는 `.is-refetching` 흐림이 이미 변화를 알린다 |
+| **교차표 가로 스크롤** | 관성 스크롤(`.scroll-x`의 `-webkit-overflow-scrolling: touch`) | 기존 유틸리티 그대로. **스크롤 스냅을 넣지 않는다** — 셀 폭이 데이터마다 달라 스냅 지점이 불규칙해진다 |
+| 배지·아바타 칩 | 전환 없음 | 상태가 변하지 않는 표시 전용 요소 |
+
+**추가 규칙**
+
+- **섹션 9개가 각자 도착할 때 화면이 계속 튀지 않게 하는 것이 이 화면 최대의 모션 과제다.** 애니메이션을 더하는 대신
+  **스켈레톤의 높이를 실제 본문에 맞춘다.** 구체적으로:
+  | 섹션 유형 | 스켈레톤 |
+  |---|---|
+  | 표 섹션(④⑤⑥⑦⑨⑩) | 스트립 자리 `skeleton h-20 w-full rounded-lg` + `DataTable state="loading"` (`skeletonRows`는 **예상 행 수에 맞춘다** — 랭킹 10, 위험군 8, 나머지 6) |
+  | 차트 섹션(③⑧) | 스트립 자리 `skeleton h-20 w-full rounded-lg` + 플롯 자리 `skeleton h-chart w-full rounded-lg md:h-chart-lg` + x축 자리 `skeleton h-4 w-full` + 범례 자리 `skeleton h-4 w-40` |
+- **[다시 시도]는 그 섹션의 요청만** 재발사한다(spec 6.1 결정 3). 화면 상단에 "전체 다시 조회" 버튼을 **두지 않는다.**
+- 앵커 이동 후 포커스: `SectionNav` 링크는 일반 `<a href="#…">`이므로 브라우저가 대상 섹션에 포커스를 옮긴다.
+  `<section>`에 `tabindex="-1"`을 **주지 않는다** — Chrome/Safari는 `id` 대상에 자동으로 시퀀셜 포커스 내비게이션 시작점을 옮긴다.
+
+---
+
+## 6. 접근성
+
+### 6.1 대비
+
+- 본문 `text-primary` on `bg-surface`: 라이트 15.3:1 / 다크 14.1:1 ✔
+- `text-secondary` 8.2:1 / `text-muted` 5.0:1 (둘 다 4.5:1 초과) ✔
+- `text-on-accent`(흰색) on `bg-accent`(#1D4ED8): 6.3:1 ✔ / 다크 `#0D1117` on `#4C82F0`: 7.4:1 ✔
+- `text-danger-strong` on `bg-danger-subtle`: 7.1:1 ✔ · `text-warning-strong` on `bg-warning-subtle`: 8.0:1 ✔ · `text-success-strong` on `bg-success-subtle`: 8.4:1 ✔
+- `border-strong`(입력 테두리) on `bg-surface`: 1.9:1 — 비텍스트 UI 대비 3:1 미달이므로 **입력은 테두리 단독이 아니라 배경 대비(`bg-surface` vs `bg-canvas`)와 라벨로도 식별**되게 한다. 포커스 시 `border-accent`(6.3:1)로 승격된다.
+- 신규 색을 넣을 때는 위 조합 기준으로 재검증할 것.
+
+### 6.2 포커스
+
+- **모든** 인터랙티브 요소에 `.focus-ring` 부착(버튼, 링크, 입력, 셀렉트, 정렬 헤더 버튼, 페이지 버튼, 행 링크, 닫기 버튼).
+- 링은 `ring-2 ring-focus ring-offset-2 ring-offset-canvas` — 어두운/밝은 배경 모두에서 보인다.
+- 마우스 클릭에는 링이 뜨지 않는다(`:focus-visible`만).
+- 링이 부모 `overflow-hidden`에 잘리지 않도록, `.scroll-x`/`Card overflow-hidden` 내부의 포커스 대상은 `ring-inset`을 쓰거나 컨테이너에 `p-0.5` 여백을 준다.
+
+### 6.3 키보드 · 포커스 관리
+
+| 상황 | 동작 |
+|---|---|
+| 페이지 최상단 | `Skip to content` 링크 — `sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 z-toast`, 대상 `#main-content` |
+| **사이드바 아코디언 그룹** | 그룹 헤더는 `<button>`. `Enter/Space`로 토글, `aria-expanded` 갱신. **`↑↓` 로빙 tabindex를 쓰지 않는다** — 항목이 9개뿐이고 모두 `Tab`으로 순회 가능해야 스크린리더 사용자의 기대와 맞는다 |
+| **내비 드로어(<lg)** | 열릴 때 닫기 버튼(또는 계정 섹션)에 포커스, 트랩, `Esc` 닫기, 닫힐 때 **연 트리거**(햄버거 또는 아바타)로 복귀 |
+| 모달 | 트랩 + 초기 포커스 [취소], `Esc` 닫기, 닫힐 때 트리거로 복귀 |
+| 표 행 클릭 이동 | 행 `div`에 `onClick`만 걸지 않는다. 첫 셀(학번/강의명)에 실제 `<a>`를 두고, `tr`의 클릭은 보조 수단 |
+| 정렬 헤더 | 실제 `<button>`, `Enter/Space` 동작, `th[aria-sort]` 갱신 |
+| 폼 제출 | `Enter`로 제출 가능, 에러 발생 시 **첫 번째 에러 필드로 포커스 이동** |
+| 삭제 흐름 | 목록 [삭제] → 모달 → 확정 → 토스트. 모달 닫히면 포커스가 원래 행의 [삭제] 버튼으로 복귀(행이 사라졌으면 표 컨테이너로) |
+| 탭 순서 (≥lg) | 스킵링크 → **사이드바(브랜드 → 메뉴 9개) → 상단바(로그아웃)** → 페이지 헤더 액션 → 필터 → 표 → 페이지네이션. DOM 순서 = 시각 순서. `tabindex` 양수 금지 |
+| 탭 순서 (<lg) | 스킵링크 → **상단바(햄버거 → 아바타)** → 페이지 콘텐츠. 사이드바는 DOM에 없다 |
+| **AppShell DOM 순서 주의** | 시각적으로 사이드바가 좌측이므로 **`<Sidebar/>`를 메인 컬럼보다 앞에** 둔다. `lg:pl-sidebar`로 밀 뿐 `order-*`로 뒤집지 않는다 |
+
+### 6.4 aria / 시맨틱
+
+- 랜드마크(앱 셸): `<aside>`+`<nav aria-label="주 메뉴">`(Sidebar) / `<header>`(TopBar, `role` 생략) / `<main id="main-content">` / 토스트 `role="region" aria-label="알림"`.
+  - **`<nav aria-label="주 메뉴">`는 화면에 최대 1개만 존재해야 한다.** `≥lg`에서는 사이드바가, `<lg`에서는 드로어가 갖는다.
+    → `Sidebar`와 `MobileNavDrawer`를 `hidden`/`lg:hidden`으로 **동시에 DOM에 두면 landmark가 2개**가 된다.
+    **`lg:hidden`인 드로어는 닫혀 있을 때 DOM에서 아예 언마운트**하고, `Sidebar`는 `hidden lg:flex`(DOM에는 있음)로 둔 뒤
+    드로어가 열려 있는 동안에만 `Sidebar`의 `<nav>`에 `aria-hidden="true"`를 걸 필요는 없다(`≥lg`에서는 드로어가 없으므로 충돌하지 않는다).
+  - 상단바의 현재 위치 텍스트는 `<nav>`가 아니라 `<p>` + `sr-only` "현재 위치: " 로 표기한다(링크가 아니므로 landmark가 아니다).
+- 페이지마다 `<h1>` 1개(= `PageHeader.title`). 카드 제목은 `<h2>`, 카드 내부 소제목 `<h3>`.
+- 표는 반드시 `<table>` + `<caption class="sr-only">`(예: "수강과목 목록") + `<th scope="col">`.
+  - 모바일 카드 스택은 `<ul>`/`<li>` + `<dl>`로 렌더하며, `<li>`에 `aria-label`로 대표값(강의명 등)을 준다.
+- 로딩: 스켈레톤 컨테이너 `aria-busy="true"` + `sr-only` "불러오는 중". 재조회 중 `aria-live="polite"`로 "목록을 다시 불러오는 중" 1회 알림.
+- 결과 개수는 `aria-live="polite"` 영역에 "총 128건 중 1-20건" 형태로 알린다.
+- 에러 메시지 `role="alert"`, 성공 토스트 `role="status"`.
+- 폼: 모든 입력에 `<label for>` 연결(placeholder를 라벨 대용으로 쓰지 않는다). 필수는 `required` + `aria-required`.
+- 파일 입력: `<input type="file" class="sr-only">` + 시각적 라벨을 `<label>`로 감싸 클릭·포커스 모두 동작하게 한다.
+
+### 6.5 색 외 단서 (색맹 대응)
+
+- **등급 배지**: 등급 문자 텍스트가 항상 있고, 도형 아이콘(▲◆●▽✕)이 병행된다. 색은 세 번째 단서다.
+- **정렬 방향**: 색이 아니라 `↑`/`↓` 글리프 + `aria-sort`.
+- **업로드 결과**: 성공/부분실패/전량실패가 **아이콘 + 제목 문구**로 먼저 구분된다.
+- **필드 에러**: 빨간 테두리 + `⚠` 아이콘 + 텍스트 메시지 3중.
+- **현재 메뉴**: 배경색(`bg-surface-selected`) + `font-semibold` + **좌측 2px 인디케이터 바** + `aria-current="page"` 4중.
+- **아코디언 그룹 접힘/펼침**: chevron 회전 + `aria-expanded` + (접힌 채 안에 현재 위치가 있으면) 점 표식 3중. 색 단독 사용 없음.
+- **KPI 카드 톤**: 아이콘 배경색은 **분류 힌트일 뿐**이며, 지표 구분은 아이콘 글리프 + 라벨 + hint 텍스트가 먼저 한다. 그레이스케일에서도 5장이 구별되어야 한다.
+- **필수 필드**: `*` 기호 + `sr-only` "(필수)" 텍스트.
+
+### 6.6 터치 · 모바일
+
+- 모든 탭 타깃 `min-h-touch min-w-touch`(44×44). 표 행 카드 내 액션 버튼도 예외 없음.
+- 인접 타깃 간 최소 `gap-2`(8px).
+- 모든 `input`/`select`/`textarea` 폰트 16px(`text-body`) — iOS 자동 확대 방지.
+- 375px 폭에서 **페이지** 가로 스크롤 0. 넓은 표는 `.scroll-x` 안에서만 스크롤된다.
+- 스크롤 가능 안내: `mobile="scroll"` 표(업로드 실패행)와 `≥md`에서 가로 스크롤이 생기는 `/scores` 표 위에
+  `text-caption text-muted` "표를 좌우로 스크롤할 수 있습니다." 를 둔다. (`mobile="stack"` 표의 모바일 뷰에는 불필요하므로 넣지 않는다.)
+
+### 6.7 확장 분석 8종의 접근성 〔2026-08-01 개정 ② 신설〕
+
+#### 6.7.1 문서 구조 — 11개 섹션의 제목 계층
+
+```
+<h1> 대시보드                          ← PageHeader (1개)
+ ├ <h2> 전체 현황                      ← 그룹 A
+ │   ├ (KPI 5장은 <ul>/<li>, 제목 없음 — aria-label="요약 지표")
+ │   ├ <h3> 등급 분포                  ← CardHeader as="h3"
+ │   │   ├ <h4 class="sr-only"> 등급별 인원수와 비율 그래프
+ │   │   └ <h4 class="sr-only"> 등급별 인원 목록
+ │   └ <h3> 점수 구간 분포
+ ├ <h2> 분해 분석 — 어디에서 차이가 나는가
+ │   ├ <h3> 학과별 학업성취도
+ │   │   └ <h4> 학과 × 등급 교차표
+ │   ├ <h3> 강의별 난이도·성적편차
+ │   └ <h3> 학과 × 강의 교차표
+ ├ <h2> 구성과 추이
+ │   ├ <h3> 평가항목별 분석
+ │   │   ├ <h4> 평가항목별 평균
+ │   │   └ <h4> 강의별 평가항목
+ │   └ <h3> 학기별 추이
+ ├ <h2> 학생 단위
+ │   ├ <h3> 학생 종합 성적 랭킹
+ │   └ <h3> 학사경고 위험군 학생
+ └ <h2> 요약 통계 (간단 보기)
+     ├ <h3> 학과별 요약 / <h3> 학기별 요약 / <h3> 강의별 요약
+```
+- **레벨을 건너뛰지 않는다.** 기존 대시보드의 `CardHeader`(기본 `h2`)를 **전부 `as="h3"`으로 내리는 것이 이번 개정의 필수 작업**이다.
+- 각 그룹은 `<section aria-labelledby="group-*-title">`, 각 섹션은 `<section aria-labelledby="{id}-title">`.
+  → 스크린리더의 **랜드마크/제목 목록만으로 11개 섹션을 순회**할 수 있다. 이것이 긴 페이지의 유일한 실질적 대안이다.
+
+#### 6.7.2 교차표(학과×등급, 학과×강의)
+
+- `DataTable`이 이미 `<th scope="col">`을 준다. **행 머리(학과명/강의명)에는 `scope="row"`가 필요**하다 →
+  `stickyFirstColumn`이 `true`일 때 첫 `<td>`를 **`<th scope="row">`로 렌더**하도록 `DataTable`을 보강한다.
+  (`scope="row"`가 없으면 스크린리더가 "78.3"만 읽고 어느 학과·어느 강의인지 말하지 못한다 — 교차표에서 치명적이다.)
+- `<caption class="sr-only">`: `학과별 등급 인원 교차표. 행은 학과, 열은 등급입니다.` / `학과별 강의 성취도 교차표. 행은 강의, 열은 학과이며 각 칸은 인원수·평균·강의 평균 대비 편차입니다.`
+- 셀 안의 보조 정보는 `sr-only`로 의미를 준다:
+  - 편차 → `DeviationValue`의 `srLabel` (`강의 평균보다 높음` 등)
+  - 최다 등급 칸 → `<span class="sr-only">이 학과의 최다 등급</span>`
+  - 미수강 칸 → `<span class="sr-only">수강 없음</span>` (계산 불가와 **다른 문구**)
+- `showScrollHint` 문구("표를 좌우로 스크롤할 수 있습니다.")는 `aria-hidden`이 아니다 — 스크린리더 사용자도 스크롤 컨테이너의 존재를 알아야 한다.
+
+#### 6.7.3 차트 3종의 공통 규약 (기존 `GradeComboChart` 규약 승계)
+
+- `<svg aria-hidden="true" focusable="false">` — 그림은 접근성 트리에서 제외한다. **키보드 Tab이 차트에 멈추지 않는다.**
+- `<figure>` + `<figcaption class="sr-only">`에 **두 계열이 각각 무엇이고 정확한 값은 어디에 있는지**를 문장으로 적는다.
+- **대체 표를 새로 만들지 않는다.** 세 차트 모두 같은 카드 안(또는 바로 아래)에 값이 텍스트로 있다:
+  - 등급분포 → 옆 막대 리스트 / 히스토그램 → 옆 구간 막대 리스트 / 학기별 추이 → 아래 학기 표
+  - 대체 표를 추가하면 **같은 값이 두 번 낭독**된다.
+- `aria-hidden` 범위: `<svg>` / y축 눈금 `<ul>`(좌·우) / x축 라벨 `<ul>` / 스페이서 `<div>`.
+  **범례 · 요약 헤드라인 · 우축 확대 안내 문구는 `aria-hidden`이 아니다** — 목록·표에 없는 정보를 담는다.
+
+#### 6.7.4 색 외 단서 (이번 라운드에 추가된 것)
+
+| 요소 | 단서 |
+|---|---|
+| 편차 ± | **부호 문자(+/−) + 방향 글리프(▲▼=) + 숫자** 3중. 색은 `evaluative`에서만 붙는 **네 번째** 단서 |
+| 학점 인플레이션 | 배지 **텍스트**("학점 인플레이션 의심") + `⚠` 글리프 + 각주의 판정 근거 |
+| 난이도 이상치 | 배지 **텍스트**("평균 대비 쉬움/어려움") + `▲`/`▼` 글리프. **EASY와 HARD가 같은 톤**이므로 색으로는 방향을 알 수 없고, **알 필요도 없게** 설계했다 |
+| 위험 사유 | 서버가 준 **한국어 문장 그대로**가 배지 텍스트다. 색은 보조 |
+| F학점 배지 | `F {n}개` 텍스트 + `✕` 글리프 |
+| 순위 | **숫자**가 1차. 1·2·3위의 톤 차이는 보조 |
+| 교차표 최다 등급 칸 | 배경 + `font-semibold` + `sr-only` 문구 3중 |
+| 성취도 기준 미달(위험군 7열) | `font-semibold` + `sr-only` "기준 미만" + 색 |
+| nullable `—` | 글리프(`—`) + `text-muted` + `sr-only` "계산 불가" + 표 각주 4중 |
+
+#### 6.7.5 낭독 폭주 방지
+
+- 섹션 9개가 **동시에** 에러가 되면 `role="alert"` 배너가 9개 뜬다. 실제로는 첫 진입 시 **로딩 스켈레톤 → 에러**로 전환되므로
+  마운트 시점에 alert가 한꺼번에 발화하지 않는다. `DashboardSection`은 **에러 배너를 조건부 마운트**하며(항상 렌더 후 숨김 금지) 이 순서를 지킨다.
+- 스켈레톤 컨테이너는 `aria-busy="true"` + `sr-only` "불러오는 중" 1개씩. 섹션마다 있으므로 **`aria-live`는 쓰지 않는다**(9개가 동시에 말하면 소음이다).
+- 재조회 중 알림은 `DataTable`이 이미 갖고 있는 `aria-live="polite"` 1줄로 충분하다. 섹션이 별도로 추가하지 않는다.
+
+#### 6.7.6 개인정보 노출 (랭킹·위험군)
+
+- 접근 제어는 이미 전 화면 인증으로 처리된다(spec 4.3). 화면 차원의 대응은 **각주 고지**뿐이다:
+  `학번·이름이 포함된 개인 명단입니다. 화면 공유·캡처에 주의하세요.`
+- 각주는 `text-caption text-muted`로 **눈에 띄지 않게** 두지 않는다 → 위험군 섹션의 이 각주만 `text-caption text-secondary`(한 단계 진하게).
+- **마스킹(홍*동)을 하지 않는다.** 담당자가 명단을 보고 행동해야 하는 화면이고, 마스킹하면 섹션의 목적이 사라진다. 조직 정책상 제한이 있으면 섹션 자체를 뺀다(spec 9절 미결).
+
+---
+
+## 7. 구현 체크리스트 (frontend-dev용)
+
+- [ ] `create-next-app` 후 `app/globals.css`·`tailwind.config.ts`를 이 저장소 버전으로 되돌렸다.
+- [ ] 전체 코드에 `bg-[`, `text-[`, `w-[`, `h-[`, `#`(색상 리터럴), `dark:` 가 **0건**이다. (`grep`으로 확인)
+- [ ] `blue-`, `gray-`, `red-` 등 Tailwind 팔레트 원색이 컴포넌트에 **0건**이다.
+- [ ] 375px에서 15개 화면 전부 가로 스크롤이 없다. (`document.documentElement.scrollWidth <= innerWidth`)
+- [ ] 모든 `input`/`select`가 `text-body`(16px)다.
+- [ ] 모든 표가 `DataTable` 하나로 렌더된다. 개별 `<table>` 직접 작성 금지.
+- [ ] `<md`에서 표 컬럼이 숨겨진 곳이 없다(카드 스택에 전 필드 존재).
+- [ ] 재조회 시 기존 내용이 사라지지 않는다(`.is-refetching`).
+- [ ] 등급/정렬/에러가 색 없이도 구분된다(그레이스케일 스크린샷으로 확인).
+- [ ] 키보드만으로 로그인 → 강의 생성 → 엑셀 업로드 → 성적 조회 → 삭제까지 완주 가능하다.
+
+### 7.1 사이드바 개편 전용 체크리스트 (2026-08-01 추가)
+
+- [ ] `components/layout/AppHeader.tsx`를 **삭제**하고 `TopBar.tsx`로 대체했다. 드롭다운 팝오버 코드가 남아 있지 않다.
+- [ ] `NAV_ITEMS`가 **한 곳(`nav-items.ts`)에만** 있고, `Sidebar`·`MobileNavDrawer`가 같은 `SidebarNav`를 렌더한다. 메뉴 마크업이 두 벌이 아니다.
+- [ ] `/lectures/new`에서 「목록」과 「생성」이 **동시에 활성이 아니다**(최장 접두어 규칙).
+- [ ] `/lectures/3/edit`에서 「수강과목 관리 > 목록」이 활성이다.
+- [ ] 그룹 헤더가 `<a>`가 아니라 `<button type="button">`이고, 클릭해도 URL이 바뀌지 않는다.
+- [ ] 현재 위치를 포함한 그룹은 접기를 시도해도 펼침을 유지한다.
+- [ ] 기존 `md:hidden` / `hidden md:*` 로 되어 있던 내비 관련 클래스가 **전부 `lg` 기준으로 바뀌었다**. (`grep "md:hidden" components/layout`)
+- [ ] 드로어가 **좌측**에서 슬라이드인한다(`animate-slide-in-left`). `slide-in-right` 잔재가 없다.
+- [ ] 드로어가 열린 상태에서 창을 1024 이상으로 넓히면 드로어가 닫히고 `body` 스크롤 잠금이 해제된다.
+- [ ] 1024 이상에서 사이드바가 콘텐츠를 **덮지 않는다**(메인 컬럼에 `lg:pl-sidebar`가 있다).
+- [ ] 전 화면에서 `w-screen` / `100vw` 사용이 **0건**이다(사이드바 폭만큼 가로 스크롤이 생긴다).
+- [ ] 1280px에서 대시보드 KPI 5열이 깨지지 않는다. 깨지면 `lg:grid-cols-3 xl:grid-cols-5`로 내린다.
+- [ ] `<nav aria-label="주 메뉴">`가 화면에 **1개만** 존재한다(접근성 트리로 확인).
+- [ ] 드로어 백드롭이 패널을 덮지 않는다(z-index 교정 확인).
+- [ ] KPI 카드에 **증감 배지가 없다.** 없는 데이터를 만든 흔적이 없다.
+- [ ] 한 화면에 `shadow-raised`가 3개 이상 있지 않다.
+
+### 7.2 등급분포 2분할 + 콤보 차트 전용 체크리스트 (2026-08-01 추가 → 콤보 개정)
+
+**폐기 확인**
+- [ ] `components/data/GradeDonutChart.tsx`가 **존재하지 않는다**(만들었다면 삭제).
+- [ ] `RING_STROKE_BY_TONE`, `stroke-dasharray`/`stroke-dashoffset`, 반지름 `15.9155` 가 코드베이스에 **0건**이다.
+- [ ] `tailwind.config.ts`에 `maxWidth.donut`이 없고, `max-w-donut` 클래스 사용도 **0건**이다.
+
+**레이아웃(이전 판에서 유지)**
+- [ ] 등급분포 **카드는 1장**이다. 차트/막대 리스트 각각을 카드로 감싸 `shadow-raised`가 3개가 되지 않았다.
+- [ ] `lg` 미만에서는 차트가 **위**, 막대 리스트가 **아래**인 세로 스택이고, `lg` 이상에서만 좌우 절반이다(`lg:grid-cols-2`).
+- [ ] DOM 순서가 차트 → 막대 리스트이고, 어떤 브레이크포인트에서도 `order-*`로 순서를 뒤집지 않았다.
+
+**색·토큰**
+- [ ] 막대 색이 같은 행의 `GradeBadge`·가로 막대 색과 **한 등급도 어긋나지 않는다**(`getGradeTone` 단일 사용, 정적 맵들의 키가 동일).
+- [ ] SVG 안에 `fill="#..."` / `stroke="rgb(var(--...))"` 가 **0건**이다. 색은 전부 `fill-*` / `stroke-*` 클래스다.
+- [ ] 라인·그리드에 `stroke-border-subtle` / `stroke-text-primary`(**생성되지 않는 클래스**)를 쓰지 않고 `stroke-chart-grid` / `stroke-chart-line`을 쓴다.
+- [ ] 범례 라인 스와치에 `bg-primary` 같은 없는 클래스를 쓰지 않았다(인라인 SVG + `stroke-chart-line`).
+- [ ] 다크모드에서 그리드선이 배경에 묻히지 않고, 라인이 모든 막대 색 위에서 구분된다.
+
+**좌표·데이터**
+- [ ] 막대 높이는 `count / maxCount`, 라인 y는 `percentage / 100` **각각 다른 스케일**로 계산된다(두 스케일을 섞지 않았다).
+- [ ] `maxCount`에 `rawMax > 0 ? … : 1` **0 나눗셈 방어**가 있다. `count`가 전부 0인 응답에서 `NaN`/`Infinity`가 DOM에 들어가지 않는다.
+- [ ] 막대 폭이 `band * 0.5`를 `BAR_MIN_W`~`BAR_MAX_W`로 클램프한 값이고, 막대가 밴드 **중앙**에 정렬된다.
+- [ ] x축 라벨 `<li>` 개수 = 막대 밴드 개수이고, **라벨이 막대 중심과 어긋나지 않는다**(`grid-cols-chart-axis` 2행 구조 확인).
+- [ ] `percentage` 합이 99.9 또는 100.1인 데이터에서도 라인이 정상이다(누적 계산이 없음을 확인).
+- [ ] 등급이 **1개뿐**일 때 `<polyline>`을 렌더하지 않고 **마커 1개만** 그린다(선이 사라진 것처럼 보이지 않는다).
+- [ ] 일부 등급의 `count === 0`일 때 **막대는 없고 x축 라벨과 0% 마커는 남는다**(등급이 통째로 사라지지 않는다).
+- [ ] `items`가 비었을 때 빈 상태가 **1개만** 나온다(반쪽마다 2개가 아니다). 차트가 자체 빈 상태를 렌더하지 않는다.
+
+**반응형·접근성**
+- [ ] `<svg>`에 `preserveAspectRatio="none"`이 있고, 넓은 화면에서 차트 폭이 320px에 묶이지 않는다.
+- [ ] `<line>`/`<polyline>`/`<circle>`에 `vector-effect="non-scaling-stroke"`가 있어 **선 굵기가 화면 폭에 따라 굵어지지 않는다.**
+- [ ] 360px 폭에서 카드가 가로로 넘치지 않는다(차트 열·막대 리스트 열 `min-w-0` 확인). 등급 10개에서도 **가로 스크롤이 생기지 않는다.**
+- [ ] 차트 높이가 `h-chart` / `md:h-chart-lg` 토큰이고 임의 px(`h-[160px]`)가 아니다.
+- [ ] `<svg>`에 `aria-hidden="true" focusable="false"`가 있고, 키보드 Tab이 차트에 멈추지 않는다.
+- [ ] `<figcaption class="sr-only">`에 **막대=인원수 / 라인=비율**이라는 설명이 들어 있다.
+- [ ] 스크린리더로 카드를 읽으면 등급·인원·비율이 **중복 없이** 전달된다(sr-only 대체 표를 추가하지 않았고, 축 라벨은 `aria-hidden`이다).
+
+### 7.3 확장 분석 8종 전용 체크리스트 (2026-08-01 개정 ② 추가)
+
+**기존 컴포넌트 수정 (회귀 위험이 가장 큰 구간 — 먼저 확인)**
+- [ ] `CardHeader`에 `icon` / `description` / `badge` prop이 추가되었고, **기존 호출부(`title`만 넘기는 곳)가 한 곳도 깨지지 않았다.**
+- [ ] `CardHeader`의 `items-center` → `items-start` 변경이 설명 없는 카드의 모양을 바꾸지 않았다.
+- [ ] `DistributionBar`가 일반화된 시그니처(`label`/`fillRatio`/`valueText`/`tone`/`emphasized`)로 바뀌었고, **등급분포 카드의 표시 결과가 개정 전과 픽셀 단위로 동일**하다.
+- [ ] `summarizeGradeDistribution` 호출이 `GradeDistributionPanel` **한 곳으로 줄었다**(헤더 배지·차트 헤드라인·막대 강조가 같은 결과를 쓴다).
+- [ ] `Column.header` 타입이 `string` → `ReactNode`로 넓어졌고 기존 문자열 호출부가 그대로 동작한다.
+- [ ] `DataTable`이 `stickyFirstColumn={true}`일 때 첫 셀을 **`<th scope="row">`** 로 렌더한다(교차표 낭독).
+- [ ] `EmptyState`에 **원형 아이콘 슬롯**(4.12)과 `tone: 'neutral' | 'danger' | 'positive'` prop이 생겼고, 기존 호출부는 `neutral` 기본값으로 그대로 동작한다.
+- [ ] 대시보드의 모든 `CardHeader`가 **`as="h3"`** 이다. `<h2>`는 그룹 제목 5개뿐이다.
+- [ ] `lib/format.ts`에 `formatTermShort`가 추가되었고 **`formatTerm`과 같은 `SEMESTER_LABELS` 상수를 공유**한다.
+
+**호출·상태 (spec 6.1)**
+- [ ] `/dashboard` 진입 시 요청이 **9건**이고 서로를 기다리지 않는다(시작 시각이 겹친다).
+- [ ] 9건의 쿼리스트링에 `term`/`departmentId`/`lectureId`가 **하나도 없다.** 화면에 필터 컨트롤이 **없다.**
+- [ ] 섹션 1개를 500으로 만들면 **그 섹션 자리에만** 에러 배너 + [다시 시도]가 뜨고 나머지 8개는 정상이다.
+- [ ] [다시 시도]가 **그 엔드포인트 1건만** 재요청한다. 화면 상단에 "전체 다시 조회" 버튼이 **없다.**
+- [ ] `error` 판정이 `empty` 판정보다 **먼저** 온다(실패를 "데이터 없음"으로 보여주지 않는다).
+- [ ] `summary.totalStudentScores === 0`이면 8개 섹션과 `SectionNav`가 **DOM에 렌더되지 않는다.**
+- [ ] 로딩 중에도 **섹션 제목·설명·기준선 문구가 보인다.**
+- [ ] 스켈레톤 → 실제 내용 교체 시 아래 섹션이 크게 튀지 않는다(스켈레톤 높이 ≒ 본문 높이).
+
+**값·단위**
+- [ ] 백분율·게이지의 분모가 **응답 `totalScoreMax`** 다. `MAX_SCORE` 상수(100)를 새 섹션에서 쓰지 않았다. (`totalScoreMax: 200`으로 바꿔도 표시가 일관되는지 확인)
+- [ ] 히스토그램 문구에 응답의 `bucketSize`·`totalCount`가 반영된다.
+- [ ] 강의 난이도 섹션에 `overallAverageTotalScore`가 **기준선으로** 보인다.
+- [ ] 위험군 문구의 기준값이 **응답의 `failCountAtLeast`·`averageBelow`** 이고, 두 조건이 **OR**임이 강조 표기된다.
+- [ ] 위험군 요청에 `limit=20`이 포함되고, `items.length === limit`일 때만 "더 있을 수 있습니다" 배너가 뜬다. **"N명 중"이라고 쓰지 않았다.**
+- [ ] 랭킹의 `rank`가 응답값 그대로다(`1,2,2,4`가 재계산되지 않는다). 표시 인원 문구가 **`items.length`에서 계산**된다.
+- [ ] 평가항목 섹션 어디에도 **항목별 백분율(%)이 없다.** 막대는 "4개 중 최댓값 기준 상대 폭"이며 그 사실이 화면 문구로 설명된다.
+- [ ] `examVsAssignmentGap`·`improvement`가 숫자만이 아니라 **부호의 의미를 푼 문장**과 함께 나온다.
+
+**nullable / 편차**
+- [ ] `stddevTotalScore`·`medianTotalScore`가 `null`인 행이 **`0`이 아니라 `—`** 로 보이고, `sr-only` "계산 불가"와 **표 각주**가 둘 다 있다.
+- [ ] `—`가 하나도 없는 응답에서는 계산 불가 각주가 **렌더되지 않는다**(없는 문제를 설명하지 않는다).
+- [ ] 교차표의 "수강 없음 `—`"와 "계산 불가 `—`"의 `sr-only` 문구가 **서로 다르다.**
+- [ ] 모든 편차에 **부호(+/−) + 방향 글리프(▲▼=) + 숫자**가 있다. `−`가 ASCII 하이픈이 아니라 U+2212다.
+- [ ] `|value| < 0.05`인 편차가 `+0.0`/`−0.0`이 아니라 `= 0.0`으로 나온다.
+- [ ] 강의 난이도 편차와 시험−과제 격차에 **초록/빨강이 칠해져 있지 않다**(`tone="neutral"`).
+- [ ] 학과×강의 셀 편차·전반→후반 향상도·직전 학기 대비에만 `evaluative` 색이 붙는다.
+
+**배지 톤**
+- [ ] `gradeInflation === true`인 강의에만 `warning` 배지가 붙고 `false`인 강의에는 **없다.**
+- [ ] `difficultyOutlier`가 `null`이면 **빈 배지를 그리지 않는다.**
+- [ ] EASY/HARD 배지가 **같은 톤(`accent`)** 이고 글리프(`▲`/`▼`)와 텍스트로만 방향이 구분된다.
+- [ ] 두 플래그가 동시에 참인 강의에 배지 **2개**가 함께 보인다.
+- [ ] `riskReasons` 배열 원소가 **전부** 표시된다(2개면 2개 다). 서버 문자열을 재작성하지 않았다.
+- [ ] 위험군 0명일 때 **에러 톤(빨강)이 아니라 `success` 아이콘 슬롯의 긍정 빈 상태**가 나온다.
+
+**차트 2종 (좌표·토큰)**
+- [ ] 히스토그램: 막대 폭 비율이 **0.82**(콤보 차트 0.5와 다르다), 막대 색이 **`fill-accent` 단색**이다.
+- [ ] 히스토그램: 누적 라인의 x가 **밴드 오른쪽 경계**(`band*(i+1)`)이고 마지막 점이 x=320이다. `overflow-visible`이 있어 마커가 잘리지 않는다.
+- [ ] 히스토그램: 누적값이 `Math.min(100, …)`으로 클램프된다(`percentage` 합이 100.1이어도 천장을 넘지 않는다).
+- [ ] 히스토그램: `count === 0`인 구간의 **막대는 없지만 x축 라벨과 누적 마커는 남는다.** 구간 막대 리스트에도 `0명 (0.0%)` 행이 남는다.
+- [ ] 학기별 추이: `grid-cols-chart-axis-2y`로 **좌·우 양쪽에 눈금 라벨**이 있고, `-my-1.5` 트릭이 양쪽 `<li>`에 적용됐다.
+- [ ] 학기별 추이: 우축이 0에서 시작하지 않는 경우 **"오른쪽 축은 0이 아니라 N점부터 시작합니다"** 문구가 항상 보인다.
+- [ ] 학기별 추이: `lineMax === lineMin` / `maxCount === 0` 방어가 **둘 다 살아 있다**(`NaN`/`Infinity`가 DOM에 없다).
+- [ ] `points.length === 1`이면 `<polyline>`이 없고 마커 1개 + "비교할 학기가 1개뿐입니다." 배너가 있다.
+- [ ] `departmentSeries`가 빈 배열이므로 **학과별 시리즈 영역·범례가 렌더되지 않는다.**
+- [ ] 세 차트 모두 `preserveAspectRatio="none"` + `vector-effect="non-scaling-stroke"`가 있고, `aria-hidden="true" focusable="false"`다.
+- [ ] SVG 안에 `fill="#…"` / `stroke="rgb(var(--…))"`가 **0건**이다. 색은 전부 `fill-*` / `stroke-chart-*` 클래스다.
+- [ ] 차트 높이가 `h-chart` / `md:h-chart-lg` 토큰이고 임의 px가 아니다.
+
+**레이아웃·반응형**
+- [ ] 375px에서 `/dashboard` **페이지** 가로 스크롤이 0이다. 넓은 표는 `.scroll-x` 안에서만 스크롤된다.
+- [ ] 학과×강의 교차표가 첫 컬럼 sticky + `showScrollHint`이고, 셀에 `min-w-matrix-cell` / 첫 컬럼에 `min-w-matrix-head`가 붙어 있다.
+- [ ] `<md`에서 8개 섹션의 표가 **행 카드 스택**이고 **숨겨진 컬럼이 0개**다(교차표의 학과별 값까지 전부 나온다).
+- [ ] 그룹 간 간격(`space-y-8 lg:space-y-10`)이 섹션 간 간격(`space-y-4 lg:space-y-6`)보다 **명확히 넓다.**
+- [ ] 한 화면에 `shadow-raised`가 **2개 이하**다(KPI primary 1 + 등급분포 1). 8개 신규 섹션은 전부 `shadow-card`다.
+- [ ] `SectionNav` 칩이 `min-h-touch`이고, 모바일에서 2줄을 넘지 않는다.
+- [ ] 앵커로 이동했을 때 섹션 제목이 sticky 상단바에 **가리지 않는다**(`section[id] { scroll-margin-top }` 동작 확인).
+- [ ] 신규 토큰 3개(`min-w-matrix-cell`·`min-w-matrix-head`·`grid-cols-chart-axis-2y`) 외에 **새 토큰을 추가하지 않았다.** 새 색상 토큰은 **0개**다.
+- [ ] 전체 코드에 `bg-[`, `text-[`, `w-[`, `h-[`, `#`(색 리터럴), `dark:`, Tailwind 팔레트 원색이 **0건**이다.
+
+**중복 오인 방지 (spec 가정 30)**
+- [ ] 그룹 B·C 섹션 제목 옆에 `상세` 배지, 그룹 E 카드 제목 옆에 `요약` 배지가 있다.
+- [ ] 그룹 E의 3개 카드에 대응 상세 섹션으로 가는 **[상세 보기] 앵커 링크**가 있다.
+- [ ] 그룹 E 카드 제목이 「학과별 요약 / 학기별 요약 / 강의별 요약」으로 바뀌었다.
+
+**접근성**
+- [ ] 제목 레벨이 `h1 → h2(그룹) → h3(섹션) → h4(섹션 내부)`로 **건너뜀 없이** 이어진다.
+- [ ] 교차표에서 스크린리더가 각 셀을 읽을 때 **행 머리(학과명/강의명)를 함께 말한다**(`<th scope="row">`).
+- [ ] 차트 3종에 `<figcaption class="sr-only">`가 있고 **두 계열의 의미**가 적혀 있다. sr-only 대체 표는 **추가하지 않았다.**
+- [ ] 이니셜 아바타가 `aria-hidden`이라 "홍 홍길동"으로 읽히지 않는다.
+- [ ] 그레이스케일 스크린샷에서 편차 방향·플래그 종류·위험 사유가 **전부 구분된다.**
+- [ ] 키보드만으로 `SectionNav` → 각 섹션 → 표 정렬/링크 → [다시 시도]까지 순회 가능하고, Tab이 차트에 멈추지 않는다.
+
+---
+
+## 8. 미결 / 후속
+
+- **다크모드 토글 UI 없음**: 현재는 OS 설정만 따른다. 토글이 필요해지면 **상단바 우측(사용자 이름 왼쪽)** 에 아이콘 버튼으로 추가하고 `<html>`의 `light`/`dark` 클래스를 교체하면 된다. 토큰 변경은 불필요하다.
+- **사이드바 접기(collapse)**: spec 결정 E로 이번 범위에서 제외. 도입 시 필요한 것 — `w-sidebar`와 짝이 되는 `w-sidebar-collapsed` 토큰, 접힘 상태 저장 위치, 라벨 툴팁. 메뉴가 9개인 현재는 이득이 작다.
+- **KPI 증감 배지**: `DashboardSummaryDto`에 비교 기준 값이 없어 보류(4.14 참고). 백엔드가 `previous*` 필드를 주면 `delta` prop + `Badge tone="success|danger"` + `▲/▼` 글리프를 4.14 구조의 `<div class="min-w-0 flex-1">` 형제로 `ml-auto shrink-0` 추가하면 된다. 지금은 **빈 자리조차 만들지 않는다**(빈 배지 자리는 "로딩 실패"로 오독된다).
+- **아이콘 세트**: 외부 라이브러리 없이 `components/ui/icons.tsx` 인라인 SVG로 시작한다. 아이콘이 15개를 넘어가면 그때 트리셰이킹되는 라이브러리 도입을 검토하고, 도입해도 **색은 `currentColor`만** 쓴다.
+- **상단바 breadcrumb**: 현재는 `NAV_ITEMS`에서 유도한 2단(그룹 / 페이지) 텍스트다. 상세 화면의 리소스명(`자료구조`)까지 넣으려면 페이지가 값을 내려줘야 하므로 후속으로 다룬다.
+- **차트 라이브러리 미도입** 〔2026-08-01 콤보 개정으로 재갱신〕: 판단의 변천은 다음과 같다.
+  1. 초판 — "등급분포는 CSS 가로 막대로 충분하다"
+  2. 2분할 개정 — "가로 막대 + 자체 SVG **도넛**"
+  3. **콤보 개정(현재) — "가로 막대 리스트 + 자체 SVG **세로 막대＋라인 콤보**". 도넛은 폐기했다.**
+  라이브러리를 넣지 않는다는 결론 자체는 세 판 모두 동일하다 — 콤보 차트는 `<rect>`/`<polyline>`/`<circle>`/`<line>` 네 종류의 기본 도형뿐이고,
+  색은 전부 토큰(`fill-*` + 새 stroke 별칭 2개)이라 다크모드가 자동으로 따라온다. **축·눈금도 HTML + 기존 타이포 토큰으로 그렸다.**
+  라이브러리 도입을 재검토할 조건은 **툴팁·호버 하이라이트·확대/축소·시계열 브러시 같은 상호작용이 필요해질 때**이며, 그때도 색은 토큰에서만 가져온다.
+  (차트 하나 때문에 런타임 의존성과 자체 색 스케일을 들이면, 지금까지 지켜온 "색은 토큰 한 곳에서만" 규칙이 무너진다.)
+- **콤보 차트의 x축은 시간이 아니다** 〔2026-08-01 추가〕: `DashboardSummaryDto`에 시계열이 없어 **등급을 x축**으로 삼았다(4.15.2 가정).
+  백엔드가 학기별/월별 추이(`gradeTrend` 같은 필드)를 주게 되면 **그때는 별도 카드**로 시계열 라인 차트를 만들고,
+  이 콤보 차트는 지금 형태를 유지한다(두 차트의 x축 의미가 다르므로 한 그래프에 합치지 않는다).
+- **`text-micro`(12px)**: 〔개정② 갱신〕 이제 `GradeBadge` GPA 병기 외에 **차트 축 눈금·x축 라벨(3종), 섹션 기준선 문구, 편차 글리프, 우축 확대 안내**에서 쓴다.
+  전부 **보조 chrome**(같은 값이 옆의 목록·표에 `text-caption` 이상으로 존재)이라는 공통점이 있다. **본문·표 셀에는 절대 쓰지 않는다.** 이 조건이 깨지는 사용처가 나오면 그때 삭제를 검토한다.
+- **엑셀 샘플 미확인**(spec 9절): `ExcelColumnGuide`의 "헤더 행 포함 여부" 문구는 확인 후 한 줄 추가한다.
+
+### 8.1 확장 분석 8종의 미결 / 후속 〔2026-08-01 개정 ② 추가〕
+
+**이번 개정에서 새로 만든 디자인 가정 (사용자 확인 필요)**
+
+1. **학과 × 강의 교차표의 열 축을 학과명 가나다순으로 고정했다** (4.25).
+   응답에 학과 축 필드가 없어 `rows[].cells[]`에서 유도해야 하는데, "처음 등장한 순서"를 쓰면 첫 행의 성적 순서에 따라 열 순서가 매번 흔들려 표를 읽는 법을 익힐 수 없다.
+   → **백엔드가 최상위 `departments` 축을 주면 그 순서를 그대로 따르는 것이 옳다.** 추가를 요청할 가치가 있다.
+2. **점수 히스토그램에 누적 비율 라인을 얹었다** (4.22.1).
+   응답 `percentage`의 단순 누적합이며 새 데이터를 만들지 않았지만, spec 3.7 (1)이 명시적으로 요구한 표현은 아니다.
+   비누적 라인은 막대와 픽셀 단위로 같은 모양이라 무의미하므로 이 선택을 했다. **불필요하다고 판단되면 라인만 제거해도 막대·목록·스트립은 그대로 성립한다.**
+3. **학기별 추이 차트의 우축을 자동 확대했다** (4.27.1).
+   0~만점 고정으로는 학기 간 변화가 직선으로 보여 섹션의 목적이 사라진다. 확대 사실을 축 눈금 + 문구로 항상 밝히는 조건에서 채택했다.
+   **"축은 반드시 0에서 시작해야 한다"는 조직 규범이 있다면 뒤집어야 한다.**
+4. **학기별 추이 표의 「직전 학기 대비」 열을 클라이언트가 계산한다** (4.27.2).
+   응답에 없는 값이지만 응답에 있는 두 값의 뺄셈이다. 각주로 계산 방식을 밝힌다.
+5. **`student-ranking`의 표시 인원을 화면에 고정 문구로 쓰지 않는다** (4.28).
+   ⚠️ **spec 5.5는 `limit=10`, 수용 기준도 `limit=10`인데 작업 지시에는 `limit=20`으로 전달되었다.** 어느 쪽이 맞는지 확인이 필요하다.
+   디자인은 **`items.length`에서 문구를 만들도록** 명세해 두었으므로 **어느 값이든 화면이 어긋나지 않는다.** 값 자체는 `frontend-dev`가 spec 5.5를 따른다.
+6. **아이콘이 18개가 되어 §8의 "15개 초과 시 라이브러리 검토" 선을 넘었다** (4.31). 이번 라운드는 인라인 SVG를 유지한다.
+
+**후속 과제**
+
+- **학과 × 강의 교차표의 폭 한계** (spec 9절 미결과 동일). 학과가 20개를 넘으면 표 폭이 2,400px을 넘는다.
+  sticky 첫 컬럼 + 스크롤 힌트로 길을 잃지는 않지만, 실데이터 확인 후 **"강의 1개 = 접이식 행" 아코디언**으로 전환할지 결정한다.
+  전환하더라도 셀 구조(인원/평균/편차 3줄)와 `DeviationValue`는 그대로 재사용된다.
+- **공통 필터 바** (spec 가정 19). 도입되면 `SectionNav` 아래, 첫 그룹 위에 **카드 1장**으로 놓고 `lg:sticky lg:top-16`으로 고정하면 된다.
+  **섹션 구조·토큰은 하나도 바뀌지 않는다** — 각 섹션이 이미 `state`를 독립적으로 받고 있어 필터 변경 시 9개가 동시에 `refetching`으로 흐려지기만 하면 된다.
+- **기존 통계 3블록 삭제 여부** (spec 가정 30). 삭제하면 그룹 E와 `SectionNav`의 칩 1개가 사라지고, 그룹 B·C의 `상세` 배지도 불필요해진다(비교 대상이 없어지므로).
+  **삭제가 결정되면 4.30 절과 1.3.1의 위계 문구를 함께 지운다.**
+- **`term-trend`의 `breakdown=department`** (spec 2절 Out of scope). 도입되면 `TermTrendChart`가 **다중 라인**이 되어 계열 색 배정이 필요해진다.
+  현재 토큰에는 "계열 색 스케일"이 없다 → **그때는 색 토큰 추가가 불가피하다.** 지금 미리 만들지 않는다(몇 개가 필요한지 모른다).
+- **차트 툴팁·호버 하이라이트**: 도입 조건은 기존과 동일(§8 "차트 라이브러리 미도입" 항목).
+  현재는 세 차트 모두 정확한 값이 옆/아래 텍스트에 있어 필요가 없다.
+- **섹션 지연 로딩(lazy)** (spec 가정 31). 9개 동시 호출이 느리다고 판명되면 **그룹 D(학생 단위)부터** 뷰포트 진입 시 로딩으로 내린다.
+  `DashboardSection`의 `state`에 `'idle'`을 추가하고 스켈레톤을 그대로 쓰면 되므로 **시각 명세는 바뀌지 않는다.**
+- **개인정보 노출 정책** (spec 9절 미결). 제한이 걸리면 그룹 D 전체를 별도 화면으로 옮긴다.
+  이때도 `DashboardSection`·`InitialAvatar`·`RankBadge`는 그대로 재사용된다(섹션 껍데기가 페이지에 의존하지 않게 설계했다).

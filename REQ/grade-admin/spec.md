@@ -1,0 +1,1292 @@
+# 대학 성적관리 프론트엔드 (grade-admin) 스펙
+
+> 작성일 2026-07-29 · 작성자 `spec-architect`
+> **최종 갱신 2026-08-01 — 대시보드 확장 분석 8종 추가** (「2.1」, 「3.7」, 「4.4」, 「5.0」, 「5.4」, 「5.5」, 「6.1」, 「7. 대시보드 — 확장 분석 8종」, 「8.1」, 가정 19~31)
+> 근거 문서: `REQ/openapi.json` (백엔드 OpenAPI 3.0 전문, 2026-08-01 재조회본). 본 문서의 모든 필드·파라미터는 이 파일에서 옮긴 것이며 추측한 값이 없다.
+> 추측이 필요했던 부분은 전부 「9. 가정 및 미결 사항」에 있다.
+>
+> **이 문서는 라운드마다 갱신되는 단일 스펙이다.** 새 요구가 오면 전면 재작성하지 않고 하위 절을 추가하며, 변경된 기존 절에는 변경 날짜를 표기한다.
+
+---
+
+## 1. 배경
+
+대학의 학사 담당자가 학과·강의(수강과목)·학점환산기준을 등록하고, 강의 단위로 성적 엑셀을 일괄 업로드하여 수강생 성적을 조회·집계하는 백오피스가 필요하다.
+
+백엔드(NestJS)는 이미 구축되어 있고 Swagger로 공개되어 있으나 현재 접근 수단이 Swagger UI뿐이다. 담당자가 실무에서 쓸 수 있는 화면이 없다. 이 프로젝트는 그 백엔드를 소비하는 **웹 프론트엔드 전체**를 신규 구축한다.
+
+풀어야 할 문제:
+- 로그인한 담당자만 데이터에 접근하게 한다 (전 화면 인증 필수).
+- 성적 등록의 유일한 경로가 엑셀 일괄 업로드이므로, **부분 실패(형식 오류 행)를 사용자가 이해하고 고칠 수 있게** 결과를 보여준다.
+- 대시보드에서 전체 현황(건수·평균·등급분포·학과별/강의별/학기별 통계)을 한눈에 보여준다.
+
+### 백엔드 접속 정보 (검증 완료)
+
+| 항목 | 값 |
+|---|---|
+| Base URL | `http://58.239.220.254:3330` |
+| 인증 스킴 | `access-token` — HTTP `Authorization: Bearer <JWT>` |
+| Swagger UI | `http://58.239.220.254:3330/api` |
+
+> **주의 — 흔한 실수:** 사용자가 알려준 `http://58.239.220.254:3330/api`는 **Swagger UI 주소**다. 실제 엔드포인트에는 `/api` 접두어가 **없다.** (`GET /health` → 200, `GET /api/health` → 404 로 직접 검증함.) 환경변수 `NEXT_PUBLIC_API_BASE_URL`의 값은 `http://58.239.220.254:3330` 이며 끝에 `/api`를 붙이지 않는다.
+
+---
+
+## 2. 범위
+
+### In scope
+
+1. **인증**
+   - 로그인 화면 (`POST /auth/login`)
+   - 전 화면 인증 가드 — 미인증 시 로그인 화면으로 이동
+   - JWT 저장·주입, 401 발생 시 자동 로그아웃 및 원래 경로 복귀
+   - GNB에 로그인 사용자 이름 표시 (`GET /users/me`) + 로그아웃
+2. **대시보드** — `GET /dashboard/summary` 결과로 화면 구성
+3. **수강과목(강의) 관리** — 목록 / 생성 / 상세·수정 / 삭제
+4. **성적 관리**
+   - 성적입력 = **엑셀 일괄 업로드** (`POST /student-scores/upload`), 성공 건수 + 실패 행 결과 표시
+   - 수강과목별 성적조회 (`GET /student-scores`, 페이지네이션·검색·정렬)
+   - 성적 단건 상세 (`GET /student-scores/{id}`)
+5. **기준정보 관리** (사용자와 합의하여 범위에 추가)
+   - 학과 관리 — 목록 / 생성 / 수정 / 삭제
+   - 학점환산기준 관리 — 목록 / 생성 / 수정 / 삭제 + 점수→등급 변환 조회(`GET /grade-scales/convert`)
+6. 공통: 로딩/빈/에러 상태, 토스트 알림, 확인 모달(삭제), 반응형(모바일 퍼스트)
+7. **대시보드 확장 분석 8종** (2026-08-01 추가) — 백엔드에 신설된 분석 엔드포인트 8개를 **기존 `/dashboard` 페이지 안의 추가 섹션**으로 노출한다. **새 라우트도, 새 사이드바 메뉴도 만들지 않는다.**
+   1. 점수 구간 히스토그램 — `GET /dashboard/score-histogram`
+   2. 학과별 학업성취도 (+ 학과 × 등급 교차표) — `GET /dashboard/department-achievement`
+   3. 강의별 난이도·성적편차 (+ 학점 인플레이션 / 난이도 이상치 플래그) — `GET /dashboard/lecture-difficulty`
+   4. 평가항목별 분석 (시험 vs 과제, 전반부 vs 후반부) — `GET /dashboard/component-analysis`
+   5. 학기별 추이 — `GET /dashboard/term-trend`
+   6. 학과 × 강의 교차표 — `GET /dashboard/department-lecture-matrix`
+   7. 학생 종합 성적 랭킹 — `GET /dashboard/student-ranking`
+   8. 학사경고 위험군 학생 — `GET /dashboard/at-risk-students`
+
+### Out of scope
+
+- **회원가입 화면** — `POST /users`는 OpenAPI에서 `deprecated: true`이며 "사용자 계정은 DB에 직접 등록한다"고 명시. **화면을 만들지 않는다.**
+- 비밀번호 찾기 / 변경 / 프로필 수정 — 해당 API 없음
+- 성적 **개별** 등록·수정·삭제 화면 — `POST/PATCH/DELETE /student-scores` API 자체가 없다 (조회 2종과 업로드만 존재)
+- 성적 엑셀 **다운로드/내보내기** — API 없음
+- 역할(role)·권한 분기 — `User` 스키마에 role 필드가 없다. 로그인한 사용자는 모두 동일 권한
+- 다국어(i18n) — 한국어 단일
+- 서버사이드 렌더링으로 데이터 프리페치 — 전 API가 Bearer 인증 필요하므로 클라이언트 페칭으로 통일 (「4.3 렌더링 전략」 참조)
+- 학과/강의/학점환산기준의 소프트 삭제 복구(undelete) 화면 — API 없음
+- 파일 업로드 진행률 상세 표시 이상의 재시도 큐, 오프라인 대응
+- 접근성·시각 디자인 세부 — `ui-ux-designer` 소관
+
+#### 2026-08-01 확장 분석 라운드에서 특별히 제외한 것 (결정과 근거는 「2.1」)
+
+- **대시보드 필터 UI (학기 / 학과 / 강의 드롭다운)** — 이번 라운드는 **필터 없이 전체 집계만** 보여준다.
+- **`breakdown=department` 학과별 시계열** — `GET /dashboard/term-trend`의 학과별 다중 시리즈는 호출하지 않는다(전체 시계열만).
+- **분석 결과의 CSV/이미지 내보내기, 인쇄 레이아웃** — 요구된 바 없고 대응 API도 없다.
+- **섹션별 접기/펼치기 상태 저장, 섹션 순서 사용자 커스터마이즈** — 상태 저장 위치를 정해야 하는 별도 과제다.
+- **분석 결과에서 목록 화면으로의 드릴다운 링크** — 예: 위험군 학생 행 → `/scores?studentNumber=…`. `GET /student-scores`에 `lectureId`/`departmentId` 필터가 없어 정확히 같은 모집단으로 이동할 수 없다. 후속 과제.
+
+### 2.1 확장 분석의 필터 범위 — 결정과 근거
+
+**결정: 이번 라운드는 8개 엔드포인트를 모두 `term`·`departmentId`·`lectureId` **없이** 호출한다. 즉 화면에 필터 컨트롤을 두지 않고 "전체 기준" 집계 하나만 보여준다.**
+
+근거:
+
+1. **요청 범위가 "내용 추가"였다.** 사용자의 요청은 "API 내용이 추가되었으니 대시보드에 내용을 추가"이고, 반영 범위로 "전부 기존 `/dashboard`에 섹션 추가"를 선택했다. 조건을 바꿔가며 탐색하겠다는 요구는 나오지 않았다.
+2. **기존 `/dashboard`에는 필터 UI가 하나도 없다.** 단순 요약 조회 화면이다. 여기에 필터를 도입하면 화면의 성격 자체가 "요약판"에서 "분석 도구"로 바뀌며, 그건 별도 합의가 필요한 변경이다.
+3. **섹션별 개별 필터는 명백히 나쁘다.** 8섹션 × 드롭다운 3개 = 컨트롤 24개. 같은 축의 필터가 화면에 8벌 존재하면 사용자는 "지금 이 숫자가 어떤 조건의 값인지"를 섹션마다 따로 추적해야 한다.
+4. **공통 필터 바 하나도 이번 라운드에는 이르다.** 필터 값을 바꾸면 8개 요청이 동시에 재발화하고, 섹션별 부분 실패·재조회 중 흐림 처리가 8배로 곱해진다. 게다가 **필터 선택지의 데이터 소스가 아직 없다** — 학기 목록을 주는 API가 없어 `GET /lectures`의 `term`을 distinct해서 만들어야 하는데(성적이 한 건도 없는 학기가 섞인다), 학과·강의 드롭다운까지 채우려면 `GET /departments` + `GET /lectures`를 추가로 호출해야 한다. 즉 필터 바는 그 자체로 독립적인 데이터 설계 과제다.
+5. **되돌리기 비용이 낮다.** 8개 엔드포인트의 필터는 전부 선택 파라미터이고 AND 결합이며, 미전송 시 전체 집계가 온다. 나중에 공통 필터 바를 얹어도 **응답 스키마도 섹션 구조도 바뀌지 않는다.** 지금 안 만드는 것이 나중에 만드는 것을 어렵게 하지 않는다.
+
+**구현 지침(코드가 아니라 계약):** 8개 호출 함수는 처음부터 공통 필터 객체를 **선택 인자로 받는 시그니처**로 정의하고, 이번 라운드의 호출부는 빈 조건으로 호출한다. 다음 라운드에서 필터 바를 얹을 때 함수 시그니처를 고치지 않아도 되게 하기 위함이다. 빈 문자열·`undefined` 파라미터는 쿼리스트링에서 제외한다(기존 `buildQueryString` 규칙과 동일).
+
+**필터 외 파라미터(표시 분량·판정 기준)는 값을 고정한다.** 사용자에게 노출하는 조작 수단 없이 아래 값을 상수로 쓴다. 상세는 「5.5」.
+
+---
+
+## 3. 사용자 시나리오
+
+### 3.1 인증 (주 흐름)
+
+- **Given** 로그인하지 않은 사용자가
+  **When** `/dashboard` 등 보호된 경로로 직접 접근하면
+  **Then** 즉시 `/login?next=%2Fdashboard`로 리다이렉트되고, 보호된 화면의 내용은 한 프레임도 렌더되지 않는다.
+
+- **Given** 로그인 화면에서
+  **When** 올바른 `loginId`/`password`를 입력하고 제출하면
+  **Then** `POST /auth/login`이 200을 반환하고, `accessToken`을 저장한 뒤 `next` 파라미터의 경로로 이동한다. `next`가 없으면 `/dashboard`로 이동한다.
+
+- **Given** 로그인한 사용자가
+  **When** 아무 화면에 있을 때
+  **Then** GNB 우측에 `GET /users/me`의 `name`(없으면 `loginId`)이 표시된다.
+
+- **Given** 로그인한 사용자가
+  **When** GNB의 로그아웃을 누르면
+  **Then** 저장된 토큰과 캐시된 사용자 정보가 삭제되고 `/login`으로 이동한다. 브라우저 뒤로가기로 보호된 화면에 되돌아갈 수 없다.
+
+### 3.2 인증 (예외 흐름)
+
+- **Given** 로그인 화면에서
+  **When** 틀린 자격증명을 제출하면 (401)
+  **Then** 폼 하단에 "로그인 ID 또는 비밀번호가 올바르지 않습니다."를 표시하고, 입력값은 유지하되 비밀번호 필드만 비운다. 화면 이동은 없다.
+
+- **Given** 토큰이 만료된 사용자가
+  **When** 임의의 API 호출에서 401을 받으면
+  **Then** 토큰을 삭제하고 `/login?next=<현재경로>&reason=expired`로 이동하며, 로그인 화면 상단에 "세션이 만료되었습니다. 다시 로그인해 주세요."를 표시한다. 재로그인 성공 시 `next` 경로로 복귀한다.
+
+- **Given** 백엔드가 응답하지 않을 때
+  **When** 로그인을 시도하면
+  **Then** "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요."를 표시하고 [다시 시도] 버튼을 제공한다.
+
+### 3.3 수강과목 관리
+
+- **Given** 강의 목록 화면에서
+  **When** 진입하면
+  **Then** `GET /lectures` 전체 배열을 받아 강의코드·강의명·학기·등록일 컬럼의 표로 보여준다. **이 API에는 쿼리 파라미터가 없으므로 검색·정렬·페이지네이션은 전부 클라이언트에서 처리한다.**
+
+- **Given** 강의 생성 화면에서
+  **When** 강의명(필수)과 학기(선택)를 입력해 제출하면
+  **Then** `POST /lectures`가 201을 반환하고, 자동 생성된 `code`(`LEC-0001` 형식)를 포함한 성공 토스트를 띄운 뒤 목록으로 이동한다.
+
+- **Given** 이미 존재하는 강의명+학기 조합으로
+  **When** 생성 또는 수정을 제출하면 (409)
+  **Then** 강의명 필드 아래에 "이미 등록된 강의명과 학기 조합입니다."를 표시하고 폼에 머문다.
+
+- **Given** 강의 목록에서 삭제를 누르면
+  **When** 확인 모달에서 [삭제]를 선택하면
+  **Then** `DELETE /lectures/{id}`가 204를 반환하고 목록에서 사라진다. (소프트 삭제이며 UI상 복구 수단은 제공하지 않는다.)
+
+- **Given** 존재하지 않는 강의 id로 상세에 접근하면 (404)
+  **Then** "요청한 강의를 찾을 수 없습니다." 빈 상태와 [목록으로] 버튼을 보여준다.
+
+### 3.4 성적입력 (엑셀 업로드)
+
+- **Given** 성적입력 화면에서
+  **When** 진입하면
+  **Then** `GET /lectures`로 채운 강의 선택 드롭다운, 파일 선택 영역, 엑셀 컬럼 순서 안내가 보인다.
+
+- **Given** 강의를 선택하고 `.xlsx` 파일을 첨부한 뒤
+  **When** [업로드]를 누르면
+  **Then** `POST /student-scores/upload`에 `multipart/form-data`로 `file`, `lectureName`, `term`을 전송하고, 201 응답의 `createdCount`(성공 건수)와 `failedRows`(행 번호 + 사유)를 결과 영역에 표시한다.
+
+- **Given** 업로드가 성공했고 `failedRows`가 비어 있지 않을 때
+  **Then** "N건 등록 완료, M건 실패"를 표시하고 실패 행을 `row`/`reason` 표로 나열한다. 실패 행은 저장되지 않았으며 **정상 행은 이미 저장되었음**을 문구로 명시한다.
+
+- **Given** 파일을 첨부하지 않았거나 강의명/학기 형식이 잘못되었을 때 (400)
+  **Then** "엑셀 파일을 첨부하고 강의를 선택해 주세요." 또는 서버 메시지를 폼 상단에 표시한다.
+
+- **Given** 해당 강의에 이미 성적이 등록되어 있거나 파일 내 학번이 중복되었을 때 (500)
+  **Then** "해당 강의에 이미 등록된 성적이 있거나, 파일 내 학번이 중복되었습니다. **아무것도 저장되지 않았습니다.**"를 표시한다. 이 케이스는 전량 롤백이므로 부분 저장 안내를 하지 않는다.
+
+- **Given** 업로드 요청 중일 때
+  **Then** [업로드] 버튼은 비활성 + 로딩 상태이며, 파일·강의 변경이 잠긴다. 중복 제출이 불가능하다.
+
+### 3.5 수강과목별 성적조회
+
+- **Given** 성적조회 화면에 강의를 선택하지 않고 진입하면
+  **Then** 강의 선택 드롭다운과 "조회할 수강과목을 선택하세요." 안내만 보이고 목록 요청을 보내지 않는다.
+
+- **Given** 강의를 선택하면
+  **When** 목록이 조회되면
+  **Then** URL 쿼리(`lectureName`, `page`, `pageSize`, `sortBy`, `order`, 검색어)가 갱신되고 `GET /student-scores`로 요청한다. 결과는 학번·이름·학과·중간고사·중간과제·기말고사·기말과제·합계·등급 컬럼의 표로 보여준다.
+
+- **Given** 목록에서
+  **When** 학생이름·학번·학과명 검색 필드에 값을 넣으면
+  **Then** 각각 `studentName`(부분), `studentNumber`(정확히 일치), `departmentName`(부분) 파라미터로 전송되고 `page`는 1로 초기화된다.
+
+- **Given** 정렬 가능한 컬럼 헤더(학번·이름·학과명·합계점수·등급)를 클릭하면
+  **Then** `sortBy`가 해당 필드로, `order`가 `ASC`↔`DESC`로 토글되어 재조회된다. 정렬 불가 컬럼 헤더는 클릭 대상이 아니다.
+
+- **Given** 조건에 맞는 결과가 0건이면 (`total: 0`)
+  **Then** "조건에 맞는 성적이 없습니다." 빈 상태와 [검색조건 초기화]를 보여준다.
+
+- **Given** 목록의 행을 클릭하면
+  **Then** `GET /student-scores/{id}` 결과로 상세(학생·강의·학과·항목별 점수·합계·등급)를 보여준다.
+
+### 3.6 기준정보 (학과 / 학점환산기준)
+
+- **Given** 학과 목록에서 코드 `CSE`가 이미 존재할 때
+  **When** 같은 코드로 생성하면 (409)
+  **Then** 코드 필드 아래에 "이미 사용 중인 학과 코드입니다."를 표시한다.
+
+- **Given** 학점환산기준 생성에서
+  **When** `minScore > maxScore`로 제출하면 (400)
+  **Then** "최소 점수는 최대 점수보다 클 수 없습니다."를 표시한다. 동일 검증을 클라이언트에서 선제적으로도 수행한다.
+
+- **Given** 이미 등록된 등급 문자로 생성/수정하면 (409)
+  **Then** "이미 등록된 등급입니다."를 표시한다.
+
+- **Given** 학점환산기준 화면의 변환 도구에
+  **When** 0~100 사이 점수를 입력하면
+  **Then** `GET /grade-scales/convert?score=<n>` 결과의 등급과 평점을 즉시 보여준다. 404면 "해당 점수에 해당하는 등급 기준이 없습니다."를 표시한다.
+
+### 3.7 대시보드 확장 분석 8종 (2026-08-01 추가)
+
+전제(모든 시나리오 공통):
+- **Given** 로그인한 담당자가 `/dashboard`에 진입하면
+  **When** 화면이 마운트되면
+  **Then** 기존 `GET /dashboard/summary` 1건과 확장 분석 8건, **총 9건의 요청이 서로를 기다리지 않고 병렬로 발사된다.** 각 섹션은 자기 응답이 도착하는 즉시 개별로 채워지며, 아직 도착하지 않은 섹션은 자기 자리에서 스켈레톤을 유지한다. (상태 규칙 전문은 「6.1」)
+- 모든 섹션은 필터 없이 전체 기준으로 조회된다. 그래서 **각 섹션에는 "전체 기간·전체 학과·전체 강의 기준" 임을 알리는 기준선 문구가 1회씩 표기된다.** 사용자가 이 숫자를 어떤 모집단의 값으로 읽어야 하는지 오해하지 않게 하기 위함이다.
+- 응답의 `totalScoreMax`(합계점수 만점)는 각 섹션이 백분율·게이지의 분모로 쓴다. **클라이언트 상수 `MAX_SCORE`(100)를 쓰지 않고 응답값을 쓴다.** 서버 설정(`DASHBOARD_TOTAL_SCORE_MAX`)이 100이 아닐 수 있기 때문이다.
+
+#### (1) 점수 구간 히스토그램 — `GET /dashboard/score-histogram`
+
+- **Given** 성적이 등록되어 있고
+  **When** 히스토그램 섹션이 응답을 받으면
+  **Then** `buckets`를 `bucketIndex` 오름차순으로 나열하고, 각 구간의 `label`(예: `90 ~ 100`), `count`(인원수), `percentage`(전체 대비 %)를 표시한다. **`count`가 0인 구간도 생략하지 않고 그대로 렌더한다** — 빈 구간이 사라지면 점수 분포의 모양(중간이 비었는지, 한쪽으로 쏠렸는지)이 왜곡된다.
+- **Given** 응답이 도착하면
+  **Then** 섹션 부제에 "합계점수 `bucketSize`점 단위 구간, 총 `totalCount`건"을 표기한다. 만점 기준은 `totalScoreMax`를 쓴다.
+- **Given** `totalCount`가 0이면 (성적 없음)
+  **Then** 구간 목록 대신 "집계할 성적이 없습니다."를 표시한다.
+
+#### (2) 학과별 학업성취도 — `GET /dashboard/department-achievement`
+
+- **Given** 응답의 `items`가 1건 이상이면
+  **When** 섹션이 렌더되면
+  **Then** 학과별로 인원수(`studentCount`), 평균(`averageTotalScore`), 중앙값(`medianTotalScore`), 표준편차(`stddevTotalScore`), 최소~최대(`minTotalScore` ~ `maxTotalScore`), 평균 평점(`averageGpa`), A등급 비율(`aGradeRate`), F등급 비율(`fGradeRate`)을 한 행에 보여준다. 정렬은 서버가 준 순서(평균 합계점수 내림차순)를 **바꾸지 않는다.**
+- **Given** 어떤 학과의 `stddevTotalScore`가 `null`이면 (집계 대상 1건 이하)
+  **Then** `0`으로 표시하지 않고 대체 문자(`—`)를 표시하고, "표본이 1건 이하여서 편차를 계산할 수 없음"이라는 취지의 보조 설명(툴팁 또는 각주)을 제공한다. **0과 "계산 불가"는 의미가 정반대이므로 절대 같게 보이면 안 된다.** `medianTotalScore` / `medianPercentage`가 `null`인 경우도 동일하다.
+- **Given** 응답의 `grades` 축(평점 내림차순, 예: `["A+","A0",…,"F"]`)과 각 학과의 `gradeCounts`가 있을 때
+  **Then** 학과 × 등급 교차표를 그린다. **모든 학과의 `gradeCounts`는 `grades`와 개수·순서가 동일하다고 서버가 보증하므로, 클라이언트가 등급 축을 다시 정렬하거나 채워 넣지 않는다.** `count`가 0인 칸도 빈칸이 아니라 `0`으로 표시한다.
+- **Given** 성적이 한 건이라도 있는 학과만 응답에 포함된다는 점을 사용자가 오해할 수 있으므로
+  **Then** 섹션에 "성적이 한 건도 없는 학과는 이 표에 나타나지 않습니다."라는 각주를 표기한다. (`GET /departments`와 병합해 0건 학과까지 채우는 것은 이번 범위가 아니다.)
+
+#### (3) 강의별 난이도·성적편차 — `GET /dashboard/lecture-difficulty`
+
+- **Given** 응답이 도착하면
+  **When** 섹션이 렌더되면
+  **Then** 섹션 상단에 기준선으로 "전체 가중평균 `overallAverageTotalScore`점"을 표시하고, 그 아래 강의별로 학기·인원수·평균·표준편차·평균 평점·A비율·F비율·전체 대비 편차(`deviationFromOverall`, `deviationPercentagePoint`)를 보여준다. **편차는 부호를 반드시 함께 표기한다(`+2.1점` / `−3.4점`).** 부호가 없으면 "쉬운 강의"와 "어려운 강의"가 구분되지 않는다.
+- **Given** 어떤 강의의 `gradeInflation`이 `true`이면
+  **Then** 그 행에 **"학점 인플레이션 의심"** 라벨을 붙이고, 판정 근거를 "A등급 비율이 50% 이상"이라고 설명 문구로 노출한다. 라벨은 경고이지 오류가 아니므로 "잘못됨"으로 읽히는 문구(예: "비정상")를 쓰지 않는다.
+- **Given** 어떤 강의의 `difficultyOutlier`가 `"EASY"`이면
+  **Then** **"평균 대비 쉬움"** 라벨을, `"HARD"`이면 **"평균 대비 어려움"** 라벨을 붙인다. `null`이면 아무 라벨도 붙이지 않는다(빈 배지를 그리지 않는다). 두 라벨 모두 판정 근거로 "전체 평균과 10%p 이상 차이"를 함께 안내한다.
+- **Given** 한 강의에 `gradeInflation === true`이면서 `difficultyOutlier === "EASY"`인 경우
+  **Then** 두 라벨을 모두 표시한다. 둘은 다른 기준(A비율 / 평균 편차)의 판정이므로 하나로 합치지 않는다.
+- **Given** `stddevTotalScore`가 `null`이면 (수강생 1명 이하)
+  **Then** (2)와 동일하게 `—` + "계산 불가" 안내로 표시한다.
+
+#### (4) 평가항목별 분석 — `GET /dashboard/component-analysis`
+
+- **Given** 응답이 도착하면
+  **When** 전체(overall) 블록이 렌더되면
+  **Then** 중간고사·중간과제·기말고사·기말과제 4개 항목의 평균을 나란히 보여준다. **각 항목의 만점 정보가 API에 없으므로 항목별 백분율(%)을 계산하거나 표시하지 않는다** — 점수 절대값과 항목 간 상대 비교만 보여준다.
+- **Given** `examVsAssignmentGap` 값이 양수이면
+  **Then** "시험에서 과제보다 `N`점 더 득점" 취지로 표기하고, 음수이면 "과제에서 시험보다 `N`점 더 득점"으로 부호의 의미를 문장으로 풀어 준다. **숫자와 부호만 던지지 않는다.**
+- **Given** `improvement` 값이 양수이면
+  **Then** "후반부(기말)가 전반부(중간)보다 `N`점 높음 — 학기가 갈수록 성취 상승" 취지로, 음수이면 "후반부가 전반부보다 `N`점 낮음 — 학기 후반 성취 하락" 취지로 표기한다. 함께 `improvedStudentCount`와 `improvedStudentRate`를 "향상 학생 `N`명(`M`%)"으로 보여준다.
+- **Given** `byLecture` 배열이 1건 이상이면
+  **Then** 강의별(학기 → 강의명 정렬, 서버 순서 유지)로 같은 지표를 표로 나열한다. **`byLecture`가 길어질 수 있으므로 표 컨테이너 안에서만 스크롤되게 한다**(페이지 전체 가로 스크롤 금지 — 공통 규칙).
+- **Given** `overall.studentCount`가 0이면
+  **Then** 항목별 평균 대신 "집계할 성적이 없습니다."를 표시하고 `byLecture` 표는 렌더하지 않는다.
+
+#### (5) 학기별 추이 — `GET /dashboard/term-trend`
+
+- **Given** 응답의 `points`가 2건 이상이면
+  **When** 섹션이 렌더되면
+  **Then** 학기 오름차순으로 각 학기의 성적 건수(`studentCount`), 평균 합계점수(`averageTotalScore`), 평균 평점(`averageGpa`)을 시계열로 보여준다. 학기 코드는 `formatTerm`으로 사람이 읽는 라벨(`26년 1학기 (2610)`)로 변환한다.
+- **Given** `points`가 1건뿐이면
+  **Then** 추이(변화)를 말할 수 없으므로 시계열 대신 단일 학기 값만 보여주고 "비교할 학기가 1개뿐입니다."를 함께 표기한다.
+- **Given** 이번 라운드는 `breakdown`을 보내지 않으므로 `departmentSeries`가 항상 빈 배열이면
+  **Then** 학과별 시리즈 영역을 **렌더하지 않는다**(빈 범례·빈 차트를 그리지 않는다).
+
+#### (6) 학과 × 강의 교차표 — `GET /dashboard/department-lecture-matrix`
+
+- **Given** `rows`가 1건 이상이면
+  **When** 섹션이 렌더되면
+  **Then** 강의(행) × 학과(열) 교차표를 그린다. 행 머리에는 강의명·학기·전체 인원수·강의 전체 평균(`averageTotalScore` — 편차의 기준선)을 표기하고, 각 칸에는 그 학과의 인원수(`studentCount`), 평균(`averageTotalScore`), **강의 평균 대비 편차(`deviationFromLectureAverage`, 부호 포함)** 를 보여준다.
+- **Given** 사용자가 편차 열의 의미를 물을 때
+  **Then** 섹션 설명에 "강의 난이도의 영향을 제거한 값이므로, 서로 다른 강의의 칸끼리 비교해도 된다"는 취지를 명시한다. 이 문장이 없으면 편차 컬럼은 그냥 또 하나의 숫자로 읽히고 섹션의 존재 이유가 사라진다.
+- **Given** 어떤 강의를 특정 학과 학생만 수강했다면 (`cells.length === 1`)
+  **Then** 그 행의 편차는 0에 수렴한다. 이를 "학과 간 비교 불가"로 표시할 필요는 없으나, `cells`가 비어 있는 행은 렌더하지 않는다.
+- **Given** 강의 수와 학과 수가 많아 표가 넓어지면
+  **Then** 강의명 열을 가로 스크롤 시 고정하고(sticky), 표 컨테이너 내부에서만 스크롤한다.
+
+#### (7) 학생 종합 성적 랭킹 — `GET /dashboard/student-ranking`
+
+- **Given** 응답의 `items`가 1건 이상이면
+  **When** 섹션이 렌더되면
+  **Then** `rank` 오름차순으로 순위·학번·이름·학과·수강 강의 수(`lectureCount`)·평균 평점(`averageGpa`)·평균 합계점수(`averageTotalScore`)를 보여준다. 정렬은 서버 순서를 그대로 쓴다.
+- **Given** 동점자가 있어 `rank`가 `1, 2, 2, 4`처럼 건너뛰면
+  **Then** 클라이언트는 순위를 다시 매기지 않고 **응답의 `rank`를 그대로 표시한다.** 동점 처리(SQL `RANK()`)는 서버 규칙이며, 화면에 "동점자는 같은 순위이며 다음 순위는 건너뜁니다."를 각주로 표기한다.
+- **Given** 학생 마스터 테이블이 없어 이름·학과가 성적 레코드의 최빈값이라는 한계가 있으므로
+  **Then** 섹션 각주에 "이름·학과는 성적 데이터 기준의 대표값이며 학적상 소속을 보증하지 않습니다."를 표기한다.
+- **Given** `items`가 비어 있으면
+  **Then** "표시할 랭킹이 없습니다."를 표시한다.
+
+#### (8) 학사경고 위험군 학생 — `GET /dashboard/at-risk-students`
+
+- **Given** 응답의 `items`가 1건 이상이면
+  **When** 섹션이 렌더되면
+  **Then** 위험한 순(F학점 수 내림차순 → 평균 합계점수 오름차순, 서버 순서 유지)으로 학번·이름·학과·수강 강의 수·F학점 수(`failCount`)·평균 평점(`averageGpa`)·평균 성취도(`averagePercentage`)를 보여준다.
+- **Given** 각 학생의 `riskReasons` 배열(예: `["F학점 2개", "평균 성취도 60% 미만"]`)이 있을 때
+  **Then** **사유를 배열 원소 그대로 전부 표시한다.** 서버가 이미 사람이 읽는 한국어 문장으로 만들어 주므로 클라이언트가 문구를 재작성하거나 하나만 골라 표시하지 않는다. 사유가 2개면 2개 다 보인다.
+- **Given** 섹션이 렌더되면
+  **Then** 판정 기준을 응답값 그대로 밝힌다: "F학점 `failCountAtLeast`개 이상 **또는** 평균 성취도 `averageBelow`% 미만인 학생". **두 조건이 OR임을 문구로 명시한다** — AND로 오해하면 명단의 크기를 잘못 해석한다.
+- **Given** 받은 `items.length`가 요청 `limit`과 같으면 (잘렸을 가능성)
+  **Then** "기준에 해당하는 학생이 더 있을 수 있습니다(상위 `limit`명만 표시)."를 안내한다. **응답에 위험군 총원 필드가 없으므로 "N명 중"이라고 쓰지 않는다.**
+- **Given** `items`가 비어 있으면
+  **Then** 오류가 아니라 좋은 상태이므로 "기준에 해당하는 위험군 학생이 없습니다."로 표시한다. 에러 톤(빨강)으로 그리지 않는다.
+- **Given** 이 섹션은 개인 식별 정보(학번·이름)를 명단 형태로 노출하므로
+  **Then** 화면 캡처·공유 시의 주의를 환기하는 각주를 표기한다. (접근 제어는 이미 전 화면 인증으로 처리된다.)
+
+### 3.8 확장 분석 섹션의 예외 흐름
+
+- **Given** 8개 섹션 중 일부가 5xx/네트워크 오류로 실패하면
+  **Then** **실패한 섹션의 자리에서만** 에러와 [다시 시도]를 보여주고, 나머지 섹션과 기존 KPI·등급분포는 정상 표시된다. 한 섹션의 실패로 대시보드 전체가 에러 화면이 되지 않는다.
+- **Given** 어떤 섹션의 [다시 시도]를 누르면
+  **Then** **그 섹션의 요청만** 재발사된다. 성공한 다른 7개 섹션은 다시 호출되지 않는다.
+- **Given** 여러 섹션이 동시에 401을 받으면
+  **Then** 「4.3 결정 3」의 전역 처리로 **로그인 리다이렉트는 1회만** 일어난다. 섹션들이 각자 에러를 그리지 않는다.
+- **Given** `GET /dashboard/summary`의 `totalStudentScores`가 0이면 (성적 0건)
+  **Then** 기존 빈 상태 안내("아직 등록된 성적이 없습니다." + [성적 입력하러 가기]) 하나만 보여주고 **확장 분석 8개 섹션은 렌더하지 않는다.** 근거: 8개 섹션이 전부 "데이터 없음"으로 줄줄이 늘어서면 화면이 고장 난 것처럼 보인다. (요청 자체는 이미 병렬로 나간 상태여도 무방하다 — summary 도착을 기다렸다가 8개를 호출하면 첫 화면 완성 시간이 두 배가 되므로 **호출은 막지 않고 렌더만 억제한다.**)
+- **Given** 어떤 섹션의 응답은 200이지만 배열이 비어 있으면 (예: `items: []`)
+  **Then** 그 섹션만 자기 빈 상태 문구를 표시하고, 에러로 처리하지 않는다.
+
+---
+
+## 4. 화면 및 라우트
+
+### 4.1 라우트 표
+
+접근 권한은 두 가지뿐이다. `공개` = 미인증 접근 가능, `인증` = 유효한 JWT 필요.
+
+| 라우트 | 화면명 | 역할 | 접근 권한 |
+|---|---|---|---|
+| `/` | 진입 리다이렉터 | 인증 시 `/dashboard`, 미인증 시 `/login`으로 즉시 이동 | 공개 |
+| `/login` | 로그인 | `loginId`/`password` 입력 → `POST /auth/login` → 토큰 저장 → `next` 또는 `/dashboard`로 이동 | 공개 (인증 상태로 접근 시 `/dashboard`로 되돌림) |
+| `/dashboard` | 대시보드 | `GET /dashboard/summary` 기반 요약 지표·등급분포·학과별/강의별/학기별 통계 **+ 확장 분석 8개 섹션(2026-08-01 추가, 「3.7」)** | 인증 |
+| `/lectures` | 수강과목 목록 | `GET /lectures` 전체 조회 + 클라이언트 검색/정렬/페이지네이션, 행별 수정·삭제 | 인증 |
+| `/lectures/new` | 수강과목 생성 | `POST /lectures` | 인증 |
+| `/lectures/[id]` | 수강과목 상세 | `GET /lectures/{id}` — 코드·강의명·학기·생성/수정일 | 인증 |
+| `/lectures/[id]/edit` | 수강과목 수정 | `GET /lectures/{id}` → `PATCH /lectures/{id}` | 인증 |
+| `/scores/upload` | 성적입력 (엑셀 업로드) | 강의 선택 + 파일 업로드 → `POST /student-scores/upload` → 결과 표시 | 인증 |
+| `/scores` | 수강과목별 성적조회 | `GET /student-scores` — 페이지네이션·검색·정렬 | 인증 |
+| `/scores/[id]` | 성적 상세 | `GET /student-scores/{id}` | 인증 |
+| `/departments` | 학과 목록 | `GET /departments` + 행별 수정·삭제 | 인증 |
+| `/departments/new` | 학과 생성 | `POST /departments` | 인증 |
+| `/departments/[id]/edit` | 학과 수정 | `GET /departments/{id}` → `PATCH /departments/{id}` | 인증 |
+| `/grade-scales` | 학점환산기준 목록 | `GET /grade-scales` + 점수→등급 변환 도구(`GET /grade-scales/convert`) + 행별 수정·삭제 | 인증 |
+| `/grade-scales/new` | 학점환산기준 생성 | `POST /grade-scales` | 인증 |
+| `/grade-scales/[id]/edit` | 학점환산기준 수정 | `GET /grade-scales/{id}` → `PATCH /grade-scales/{id}` | 인증 |
+| `*` (그 외) | 404 | "페이지를 찾을 수 없습니다." + [대시보드로] | 인증 라우트 그룹 내부 |
+
+> 상세 화면(`/lectures/[id]`)은 목록의 수정 버튼과 중복되지만, `GET /lectures/{id}` 404 시나리오를 담을 곳이 필요하고 성적조회에서 강의로 링크할 지점이 필요하므로 유지한다. 최소 구현 시 목록→수정 직행만 지원하고 상세를 생략해도 수용 기준에는 영향이 없다.
+
+### 4.2 사이드바 / 메뉴 구조
+
+> **2026-08-01 변경.** 기존에는 **상단 가로 GNB + 드롭다운** 구조였으나, 참조 디자인(Tailwind Admin 무료 대시보드 템플릿)에 맞춰 **좌측 사이드바 + 상단바** 구조로 전환한다. 라우트·API·데이터 모델은 바뀌지 않으며 **네비게이션의 배치 구조만 바뀐다.** 이 문서의 다른 절에서 "GNB"로 표기된 부분은 모두 아래의 앱 셸(사이드바 + 상단바)을 가리키는 것으로 읽는다.
+
+메뉴 그룹 구성은 그대로 유지한다. 사용자가 요구한 메뉴는 「수강과목 관리」와 「성적관리」 두 개다. 합의로 추가된 학과·학점환산기준은 성격이 다른(마스터 데이터) 리소스이므로 **기존 두 메뉴에 섞지 않고 별도 3번째 그룹 「기준정보 관리」로 분리 배치한다.** 근거: 학과와 학점환산기준은 강의·성적의 입력 재료이지 일상 업무 단위가 아니며, 요구된 메뉴 구조를 훼손하지 않고 확장할 수 있다.
+
+#### 앱 셸 구조 (데스크탑 ≥1024)
+
+```
+┌────────────────────┬────────────────────────────────────────────────┐
+│ [로고/서비스명]     │ (상단바)                <사용자이름> [로그아웃] │
+│                    ├────────────────────────────────────────────────┤
+│ 대시보드            │                                                │
+│                    │                                                │
+│ 수강과목 관리 ▾     │                  (페이지 콘텐츠)                │
+│  ├ 목록            │                                                │
+│  └ 생성            │                                                │
+│                    │                                                │
+│ 성적관리 ▾          │                                                │
+│  ├ 성적입력        │                                                │
+│  └ 수강과목별 성적조회│                                              │
+│                    │                                                │
+│ 기준정보 관리 ▾     │                                                │
+│  ├ 학과 관리       │                                                │
+│  └ 학점환산기준 관리 │                                                │
+└────────────────────┴────────────────────────────────────────────────┘
+   좌측 사이드바(상시 노출)              메인 영역
+```
+
+#### 사이드바 메뉴 항목
+
+| 순서 | 항목 | 형태 | 라우트 |
+|---|---|---|---|
+| 1 | 대시보드 | 단일 링크 (그룹 없음) | `/dashboard` |
+| 2 | 수강과목 관리 | 그룹 | — |
+| 2-1 | 목록 | 하위 링크 | `/lectures` |
+| 2-2 | 생성 | 하위 링크 | `/lectures/new` |
+| 3 | 성적관리 | 그룹 | — |
+| 3-1 | 성적입력 | 하위 링크 | `/scores/upload` |
+| 3-2 | 수강과목별 성적조회 | 하위 링크 | `/scores` |
+| 4 | 기준정보 관리 | 그룹 | — |
+| 4-1 | 학과 관리 | 하위 링크 | `/departments` |
+| 4-2 | 학점환산기준 관리 | 하위 링크 | `/grade-scales` |
+
+#### 구조적 결정
+
+- **결정 A — 좌측 사이드바 + 상단바 2영역 셸.** 사이드바는 로고/서비스명 + 세로 메뉴만 담고, 상단바는 사용자 이름 + 로그아웃만 담는다. 상단바에 페이지 이동용 메뉴 링크를 두지 않는다(이동 경로는 사이드바로 단일화).
+- **결정 B — 그룹은 아코디언.** 그룹 헤더(수강과목 관리/성적관리/기준정보 관리)를 클릭하면 하위 링크가 펼쳐지고 접힌다. 그룹 헤더 자체는 라우트를 갖지 않으며 클릭해도 페이지 이동이 일어나지 않는다.
+- **결정 C — 현재 경로가 속한 그룹은 진입 시 자동으로 펼쳐진 상태다.** 예: `/scores/upload` 진입 시 「성적관리」 그룹이 펼쳐져 있다. 기본값으로 **3개 그룹 모두 펼쳐진 상태로 시작**한다(메뉴가 9개뿐이라 전부 보여도 스크롤이 필요 없고, 접힘 상태를 세션 간 저장하는 요구가 없다). 접힘/펼침 상태는 새로고침 시 이 기본값으로 되돌아가며 별도 저장하지 않는다.
+- **결정 D — 현재 화면에 해당하는 하위 링크는 활성(active) 상태로 구분 표시한다.** 하위 라우트도 부모 목록의 활성 표시를 유지한다(예: `/lectures/3/edit`에서는 「수강과목 관리 > 목록」이 활성). 구체적 시각 처리는 `design.md` 소관.
+- **결정 E — 데스크탑(≥1024)에서 사이드바는 항상 펼쳐진 상태로 상시 노출된다. 폭 축소(아이콘 전용) 접기 기능은 이번 범위에서 제외한다.** 근거: 접기 상태는 저장 위치(로컬스토리지 등)·아이콘 세트·툴팁까지 결정해야 해 별도 범위가 되고, 현 메뉴 수(9개)에서 얻는 이득이 작다. 필요해지면 후속 요구사항으로 다룬다.
+- **결정 F — 모바일·태블릿(<1024)에서는 상단바의 햄버거 버튼으로 여는 오버레이 드로어로 동일 계층을 그대로 펼친다.** 드로어는 링크를 선택하면 닫히고, 배경(딤) 클릭과 `Esc`로도 닫힌다. 정확한 애니메이션·치수는 `design.md` 소관.
+- 상단바 사용자 영역: `GET /users/me`의 `name`을 표시한다. `name`이 null이면 `loginId`로 대체한다 (`User.name`은 required지만 `LoginUserDto.name`은 `nullable: true`이므로 방어).
+- 로그아웃은 확인 모달 없이 즉시 처리한다.
+- 사이드바·상단바·드로어는 `/login`에 렌더되지 않는다.
+
+### 4.3 렌더링 전략 및 인증 설계 (결정 사항)
+
+**결정 1 — 토큰 저장 위치: 쿠키 `access_token` (JS 접근 가능, `Path=/`, `SameSite=Lax`, 세션 쿠키).**
+
+근거:
+- Next.js middleware는 서버에서 실행되므로 `localStorage`를 볼 수 없다. 미들웨어 가드를 쓰려면 토큰(또는 최소한 그 존재 여부)이 **쿠키**에 있어야 한다.
+- 토큰은 클라이언트 JS가 `Authorization: Bearer`로 직접 붙여야 하므로 `HttpOnly`로 만들 수 없다. HttpOnly로 만들려면 Next.js에 BFF 프록시 라우트를 두어야 하는데, 이는 백엔드가 이미 CORS로 직접 호출을 허용하는 상황에서 과한 구조이며 이번 범위에서 제외한다.
+- 따라서 **XSS에 노출되는 저장 방식임을 인정하고 채택한다.** 완화책: 사용자 입력을 `dangerouslySetInnerHTML`로 렌더하지 않는다, 서드파티 스크립트를 넣지 않는다. 이 트레이드오프는 「9. 가정」에 재기재한다.
+- 만료 시각을 미리 알 필요가 있으면 JWT의 `exp` 클레임을 디코드해 사용한다 (검증은 하지 않는다 — 검증은 백엔드 책임).
+
+**결정 2 — 가드는 2중. (a) Next.js middleware가 1차, (b) 인증 레이아웃이 2차.**
+
+- (a) `middleware.ts`: 보호 라우트 매처에서 쿠키 `access_token`의 **존재 여부만** 확인한다. 없으면 `/login?next=<pathname+search>`로 307 리다이렉트. 서명 검증은 하지 않는다 (미들웨어에 비밀키가 없고, 최종 권한 판정은 백엔드 401이 담당한다).
+- (b) 인증 라우트 그룹 레이아웃(`app/(auth)/layout.tsx` 등)이 마운트 시 `GET /users/me`를 호출해 토큰이 **실제로 유효한지** 확인한다. 401이면 로그아웃 처리 후 `/login?next=…&reason=expired`.
+  - 이 호출이 끝나기 전에는 자식 화면을 렌더하지 않고 전체 화면 로딩을 보여준다 → 만료 토큰으로 보호 화면이 잠깐 보이는 현상을 막는다.
+  - `/users/me` 결과는 인증 컨텍스트에 캐시해 GNB가 재사용한다. 화면 전환마다 다시 호출하지 않는다.
+- (a)만으로 부족한 이유: 쿠키가 있어도 만료·폐기된 토큰일 수 있다. (b)만으로 부족한 이유: 클라이언트 가드는 첫 페인트 깜빡임과 정적 셸 노출을 허용한다.
+
+**결정 3 — 401 처리: 중앙 fetch 래퍼에서 단일 지점 처리.**
+
+- 모든 API 호출은 하나의 클라이언트 래퍼를 거친다. 래퍼는 쿠키에서 토큰을 읽어 `Authorization: Bearer <token>`을 붙인다.
+- 응답이 401이면 (단, `POST /auth/login` 호출 자체는 예외) → 토큰 쿠키 삭제 → 인증 컨텍스트 초기화 → `/login?next=<현재 pathname+search>&reason=expired`로 이동. 진행 중인 다른 요청의 중복 리다이렉트는 1회로 억제한다.
+- **원래 가려던 경로 복귀는 지원한다.** 로그인 성공 시 `next` 쿼리로 이동한다. 단 오픈 리다이렉트 방지를 위해 `next`는 `/`로 시작하고 `//`로 시작하지 않는 **내부 경로일 때만** 사용하고, 아니면 `/dashboard`로 보낸다.
+
+**결정 4 — 데이터 페칭은 전부 클라이언트 컴포넌트에서.**
+전 엔드포인트가 Bearer 인증을 요구하고 토큰이 클라이언트 소유이므로 서버 컴포넌트 프리페치의 이점이 없다. App Router는 라우팅·레이아웃·미들웨어 용도로 쓰고, 데이터는 `"use client"` 화면에서 가져온다. `/login`을 제외한 화면은 `dynamic = "force-dynamic"` 성격으로 취급한다.
+
+### 4.4 `/dashboard` 섹션 구성 (2026-08-01 확장)
+
+**라우트도 사이드바 메뉴도 추가하지 않는다.** 확장 분석 8종은 전부 기존 `/dashboard` 문서 흐름에 이어 붙는 섹션이다. 「4.2 사이드바 메뉴 항목」 표는 변경되지 않는다.
+
+아래는 **정보 구조상의 순서 제안**이다. 각 섹션이 세로로 이어지는 한 페이지라는 것과 순서만 정하며, **열 구성·카드 크기·차트 종류·색상 등 시각 결정은 전부 `ui-ux-designer` 소관이다.** 디자이너가 근거를 갖고 순서를 조정해도 무방하다(수용 기준은 순서가 아니라 존재와 내용을 검증한다).
+
+| 순서 | 섹션 | 데이터 소스 | 이 자리에 둔 이유 |
+|---|---|---|---|
+| 1 | 요약 KPI 5장 | `summary` (기존) | 가장 굵은 숫자부터. 기존 유지 |
+| 2 | 등급 분포 | `summary.gradeDistribution` (기존) | 기존 유지 |
+| 3 | 점수 구간 히스토그램 | `score-histogram` | 2와 같은 "전체 분포"를 등급 대신 점수 축으로 본다. 나란히 두면 두 관점이 서로를 설명한다 |
+| 4 | 학과별 학업성취도 (+ 등급 교차표) | `department-achievement` | 전체 → 학과로 좁히는 첫 분해 축 |
+| 5 | 강의별 난이도·성적편차 | `lecture-difficulty` | 두 번째 분해 축(강의). 인플레이션·이상치 라벨이 여기서 나온다 |
+| 6 | 학과 × 강의 교차표 | `department-lecture-matrix` | 4와 5를 곱한 축이므로 둘 다 본 다음에 온다 |
+| 7 | 평가항목별 분석 | `component-analysis` | 점수의 **내부 구성**(시험/과제, 전/후반)으로 관점이 바뀌는 지점 |
+| 8 | 학기별 추이 | `term-trend` | 시간 축. 단면 분석이 모두 끝난 뒤 |
+| 9 | 학생 종합 성적 랭킹 | `student-ranking` | 집계에서 개인 단위로 내려가는 지점 |
+| 10 | 학사경고 위험군 학생 | `at-risk-students` | 9와 같은 개인 단위이며 **행동을 요구하는 목록**이라 마지막에 둔다 |
+| 11 | 학과별 / 학기별 / 강의별 통계 3블록 | `summary` (기존) | 아래 주석 참조 |
+
+> **기존 통계 3블록과의 중복.** `summary.departmentStats`는 `department-achievement`에, `summary.lectureStats`는 `lecture-difficulty`에, `summary.termStats`는 `term-trend`에 각각 **정보가 완전히 포섭된다**(새 API가 같은 값에 더해 중앙값·편차·비율까지 준다). 이번 라운드에서는 **기존 3블록을 삭제하지 않고 유지**한다 — 삭제는 이미 사용자에게 보여지고 있던 것을 없애는 변경이므로 별도 확인이 필요하다. 대신 화면 하단으로 내려 "요약" 성격임을 드러낸다. 삭제 여부는 「9. 미결 사항」에 올린다.
+
+---
+
+## 5. 데이터 모델
+
+`REQ/openapi.json`의 `components.schemas`를 그대로 옮긴 초안이다. **`?`가 없는 필드는 OpenAPI의 `required` 배열에 포함된 것이고, `| null`은 `nullable: true`인 것이다.** 임의로 옵셔널을 추가하지 않았다.
+
+```ts
+// ─────────────────────────────── 인증 / 사용자
+
+/** POST /auth/login 요청 본문. 두 필드 모두 필수. */
+export interface LoginDto {
+  loginId: string;   // 예: "user001"
+  password: string;  // 예: "password123"
+}
+
+/** 로그인 응답에 동봉되는 축약 사용자. name만 null 가능. */
+export interface LoginUserDto {
+  id: string;          // UUID
+  loginId: string;
+  email: string;
+  name: string | null; // 표시명. null이면 loginId로 대체해 표기한다
+}
+
+/** POST /auth/login 200 응답. */
+export interface LoginResponseDto {
+  accessToken: string; // 이후 요청의 Authorization: Bearer 값
+  user: LoginUserDto;
+}
+
+/** GET /users/me 200 응답. 비밀번호는 응답에 포함되지 않는다. */
+export interface User {
+  id: string;
+  loginId: string;
+  email: string;
+  name: string;                // 이 스키마에서는 non-null (LoginUserDto와 다름)
+  employeeNo: string;          // 사번
+  lastLoginAt: string | null;  // ISO date-time. 최초 로그인 전이면 null
+  createdAt: string;           // ISO date-time
+  updatedAt: string;           // ISO date-time
+}
+
+// ─────────────────────────────── 학과
+
+export interface Department {
+  id: string;
+  code: string;               // 학과 코드. 중복 불가. 예: "CSE"
+  name: string;               // 예: "컴퓨터공학과"
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;   // 소프트 삭제 시각. 미삭제면 null
+}
+
+/** POST /departments — 두 필드 모두 필수. */
+export interface CreateDepartmentDto {
+  code: string;
+  name: string;
+}
+
+/** PATCH /departments/{id} — 모든 필드 선택(부분 수정). */
+export interface UpdateDepartmentDto {
+  code?: string;
+  name?: string;
+}
+
+// ─────────────────────────────── 강의(수강과목)
+
+export interface Lecture {
+  id: string;
+  code: string;               // 서버가 "LEC-0001" 형식으로 자동 생성. 클라이언트가 보내지 않는다
+  name: string;               // 강의명
+  term: string;               // 개설학기 코드. YY10=1학기 / YY11=계절 / YY20=2학기 / YY21=계절
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+/** POST /lectures — name만 필수. term 미입력 시 서버가 "2610"을 적용. */
+export interface CreateLectureDto {
+  name: string;
+  term?: string;
+}
+
+/** PATCH /lectures/{id} — 모든 필드 선택. */
+export interface UpdateLectureDto {
+  name?: string;
+  term?: string;
+}
+
+// ─────────────────────────────── 학점환산기준
+
+export interface GradeScale {
+  id: string;
+  grade: string;              // 등급 문자. 중복 불가. 예: "A+"
+  gpa: number;                // 평점 (4.5 만점). 예: 4.5
+  minScore: number;           // 백분위 최소값 0~100
+  maxScore: number;           // 백분위 최대값 0~100
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+/** POST /grade-scales — 네 필드 모두 필수. minScore <= maxScore 여야 한다(위반 시 400). */
+export interface CreateGradeScaleDto {
+  grade: string;
+  gpa: number;
+  minScore: number;
+  maxScore: number;
+}
+
+/** PATCH /grade-scales/{id} — 모든 필드 선택. */
+export interface UpdateGradeScaleDto {
+  grade?: string;
+  gpa?: number;
+  minScore?: number;
+  maxScore?: number;
+}
+
+// ─────────────────────────────── 성적
+
+/** GET /student-scores, GET /student-scores/{id} 응답 항목.
+ *  lecture와 department는 id가 아니라 객체 전체가 임베드되어 온다. */
+export interface StudentScore {
+  id: string;
+  studentNumber: string;          // 학번
+  studentName: string;            // 학생 이름
+  lecture: Lecture;               // 임베드된 강의 객체
+  department: Department;         // 임베드된 학과 객체
+  midtermExamScore: number;       // 중간고사 점수
+  midtermAssignmentScore: number; // 중간과제 점수
+  finalExamScore: number;         // 기말고사 점수
+  finalAssignmentScore: number;   // 기말과제 점수
+  totalScore: number;             // 합계점수. 서버 계산값 (클라이언트가 다시 계산하지 않는다)
+  grade: string;                  // 등급. 서버 계산값
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** GET /student-scores 200 응답 봉투. */
+export interface FindStudentScoresResponseDto {
+  data: StudentScore[];
+  total: number;       // 검색 조건에 해당하는 전체 건수
+  page: number;        // 현재 페이지 번호
+  totalPages: number;  // 전체 페이지 수
+}
+
+/** 업로드 시 형식 오류로 건너뛴 행. */
+export interface FailedRowDto {
+  row: number;     // 실패한 엑셀 행 번호 (1부터 시작)
+  reason: string;  // 예: "학번, 이름, 학과는 모두 필수입니다."
+}
+
+/** POST /student-scores/upload 201 응답. */
+export interface UploadExcelResponseDto {
+  createdCount: number;        // 새로 등록된 성적 건수
+  failedRows: FailedRowDto[];  // 빈 배열이면 전량 성공
+}
+
+// ─────────────────────────────── 대시보드
+
+export interface GradeDistributionItemDto {
+  grade: string;      // 예: "A+"
+  count: number;      // 해당 등급 인원수
+  percentage: number; // 전체 대비 비율(%). 예: 24.5
+}
+
+export interface DepartmentStatItemDto {
+  departmentName: string;
+  studentCount: number;
+  averageTotalScore: number;
+}
+
+export interface LectureStatItemDto {
+  lectureName: string;
+  term: string;
+  studentCount: number;
+  averageTotalScore: number;
+}
+
+export interface TermStatItemDto {
+  term: string;
+  studentCount: number;
+  averageTotalScore: number;
+}
+
+/** GET /dashboard/summary 200 응답. 모든 필드 required. */
+export interface DashboardSummaryDto {
+  totalDepartments: number;    // 등록된 학과 수
+  totalLectures: number;       // 등록된 강의 수
+  totalStudentScores: number;  // 등록된 성적 건수
+  averageTotalScore: number;   // 전체 평균 합계점수
+  averageGpa: number;          // 전체 평균 평점 (4.5 만점)
+  gradeDistribution: GradeDistributionItemDto[];
+  departmentStats: DepartmentStatItemDto[];
+  lectureStats: LectureStatItemDto[];
+  termStats: TermStatItemDto[];
+}
+```
+
+### 5.0 대시보드 확장 분석 8종의 데이터 모델 (2026-08-01 추가)
+
+`REQ/openapi.json`의 `components.schemas`에서 그대로 옮겼다. 아래 규칙을 지켰고 예외는 없다.
+
+- **`?`(옵셔널)를 쓴 필드는 하나도 없다.** 8개 응답 스키마의 모든 필드가 OpenAPI `required` 배열에 들어 있다.
+- **`| null`은 `nullable: true`인 필드에만 붙였다.** 해당 필드는 정확히 4개다 — `DepartmentAchievementItemDto`의 `medianTotalScore` / `medianPercentage` / `stddevTotalScore`, `LectureDifficultyItemDto`의 `stddevTotalScore`. 그리고 `LectureDifficultyItemDto.difficultyOutlier`(enum + nullable).
+- 배열 필드는 서버가 **정렬 순서를 보증**한다. 주석에 적힌 정렬 규칙을 클라이언트가 다시 바꾸지 않는다.
+
+```ts
+// ─────────────────────────────── 대시보드 확장 분석 공통
+
+/** 8개 확장 분석 엔드포인트가 공통으로 받는 선택 필터. 셋 다 AND 결합된다.
+ *  존재하지 않는 id를 줘도 404가 아니라 빈 결과가 온다.
+ *  이번 라운드(2026-08-01)에는 화면에서 이 값을 채우지 않는다 (「2.1」). */
+export interface DashboardFilterQuery {
+  term?: string;          // 개설학기 코드 (예: "2610")
+  departmentId?: string;  // 학과 UUID
+  lectureId?: string;     // 강의 UUID
+}
+
+// ─────────────────────────────── (1) GET /dashboard/score-histogram
+
+export interface ScoreHistogramBucketDto {
+  bucketIndex: number; // 구간 번호 (0부터 시작)
+  label: string;       // 구간 표시용 라벨. 예: "90 ~ 100"
+  minScore: number;    // 구간 하한 (포함)
+  maxScore: number;    // 구간 상한. 마지막 구간의 상한은 만점으로 잘린다
+  count: number;       // 이 구간의 인원수. 데이터가 없는 구간도 0으로 온다 (항목이 생략되지 않는다)
+  percentage: number;  // 전체 대비 비율(%)
+}
+
+export interface ScoreHistogramResponseDto {
+  totalScoreMax: number;                // 구간 생성의 기준이 된 합계점수 만점
+  bucketSize: number;                   // 실제 적용된 구간 폭 (요청값이 아니라 서버 확정값)
+  totalCount: number;                   // 집계 대상 성적 건수
+  buckets: ScoreHistogramBucketDto[];   // bucketIndex 오름차순. 빈 구간 포함
+}
+
+// ─────────────────────────────── (2) GET /dashboard/department-achievement
+
+/** 학과 × 등급 교차표의 한 칸. 해당 등급 인원이 0명이어도 항목이 생략되지 않는다. */
+export interface DepartmentGradeCountItemDto {
+  grade: string;      // 등급 문자. 예: "A+"
+  gpa: number;        // 해당 등급의 평점
+  count: number;      // 인원수 (0 가능)
+  percentage: number; // 학과 내 비율(%)
+}
+
+export interface DepartmentAchievementItemDto {
+  departmentId: string;
+  departmentName: string;
+  studentCount: number;             // 집계 대상 성적 건수
+  averageTotalScore: number;        // 평균 합계점수
+  averagePercentage: number;        // 평균 성취도(만점 대비 %)
+  medianTotalScore: number | null;  // 중앙값. 집계 대상이 없으면 null
+  medianPercentage: number | null;  // 중앙값의 백분율. 위와 동일 조건에서 null
+  stddevTotalScore: number | null;  // 표본표준편차. 대상이 1건 이하면 계산 불가 → null (0이 아니다)
+  minTotalScore: number;
+  maxTotalScore: number;
+  averageGpa: number;               // 평균 평점. 학점환산표에 없는 등급은 계산에서 제외된다
+  aGradeCount: number;              // A등급(평점 4.0 이상) 인원수
+  aGradeRate: number;               // A등급 비율(%)
+  fGradeCount: number;              // F등급(평점 0) 인원수
+  fGradeRate: number;               // F등급 비율(%)
+  gradeCounts: DepartmentGradeCountItemDto[]; // 응답 최상위 grades 축과 개수·순서가 동일
+}
+
+export interface DepartmentAchievementResponseDto {
+  totalScoreMax: number;                    // 백분율 환산에 쓴 합계점수 만점
+  grades: string[];                         // 교차표의 등급 축. 평점 내림차순
+  items: DepartmentAchievementItemDto[];    // 평균 합계점수 내림차순. 성적 0건 학과는 미포함
+}
+
+// ─────────────────────────────── (3) GET /dashboard/lecture-difficulty
+
+/** 난이도 이상치 판정값. 전체 평균과 10%p 이상 차이날 때만 값이 있다. */
+export type DifficultyOutlier = "EASY" | "HARD";
+
+export interface LectureDifficultyItemDto {
+  lectureId: string;
+  lectureName: string;
+  term: string;
+  studentCount: number;
+  averageTotalScore: number;
+  averagePercentage: number;               // 평균 성취도(만점 대비 %)
+  stddevTotalScore: number | null;         // 수강생 1명 이하면 계산 불가 → null
+  averageGpa: number;
+  aGradeRate: number;                      // A등급(평점 4.0 이상) 비율(%)
+  fGradeRate: number;                      // F등급(평점 0) 비율(%)
+  deviationFromOverall: number;            // 전체 가중평균 대비 편차(합계점수). 양수면 상대적으로 쉬운 강의
+  deviationPercentagePoint: number;        // 위 편차를 만점 대비 %p로 환산한 값
+  gradeInflation: boolean;                 // A등급 비율 50% 이상이면 true (학점 인플레이션 의심)
+  difficultyOutlier: DifficultyOutlier | null; // 차이가 10%p 미만이면 null
+}
+
+export interface LectureDifficultyResponseDto {
+  totalScoreMax: number;
+  overallAverageTotalScore: number;   // 필터 집합 전체의 **가중평균**(강의 평균의 단순 평균이 아님)
+  overallAveragePercentage: number;
+  items: LectureDifficultyItemDto[];  // 평균 합계점수 내림차순(쉬운 강의부터)
+}
+
+// ─────────────────────────────── (4) GET /dashboard/component-analysis
+
+/** 평가항목별 집계. 항목별 만점 정보가 없어 개별 항목의 백분율은 제공되지 않는다. */
+export interface ComponentAveragesDto {
+  studentCount: number;              // 집계 대상 성적 건수
+  midtermExamAverage: number;        // 중간고사 평균
+  midtermAssignmentAverage: number;  // 중간과제 평균
+  finalExamAverage: number;          // 기말고사 평균
+  finalAssignmentAverage: number;    // 기말과제 평균
+  examAverage: number;               // 시험 평균 (중간고사 + 기말고사)
+  assignmentAverage: number;         // 과제 평균 (중간과제 + 기말과제)
+  examVsAssignmentGap: number;       // 시험 − 과제. 양수면 시험에서 더 득점
+  midtermHalfAverage: number;        // 전반부 평균 (중간고사 + 중간과제)
+  finalHalfAverage: number;          // 후반부 평균 (기말고사 + 기말과제)
+  improvement: number;               // 후반부 − 전반부. 양수면 학기 후반에 성취 상승
+  improvedStudentCount: number;      // 후반부 점수가 전반부보다 높아진 학생 수
+  improvedStudentRate: number;       // 향상 학생 비율(%)
+}
+
+/** 강의별 평가항목 집계 = ComponentAveragesDto + 강의 식별 3필드.
+ *  OpenAPI에서는 두 스키마가 별개로 정의되어 있고 필드가 전부 required 다. */
+export interface LectureComponentAveragesDto extends ComponentAveragesDto {
+  lectureId: string;
+  lectureName: string;
+  term: string;
+}
+
+export interface ComponentAnalysisResponseDto {
+  totalScoreMax: number;                       // 합계점수 만점 (시험/과제/전후반은 그 부분합)
+  overall: ComponentAveragesDto;               // 필터 전체 기준 집계
+  byLecture: LectureComponentAveragesDto[];    // 학기 → 강의명 순 정렬
+}
+
+// ─────────────────────────────── (5) GET /dashboard/term-trend
+
+export interface TermTrendPointDto {
+  term: string;               // 개설학기 코드 (YYnn)
+  studentCount: number;       // 해당 학기의 성적 건수
+  averageTotalScore: number;
+  averagePercentage: number;  // 평균 성취도(만점 대비 %)
+  averageGpa: number;
+}
+
+export interface DepartmentTermSeriesDto {
+  departmentId: string;
+  departmentName: string;
+  points: TermTrendPointDto[]; // 학기 오름차순. 성적이 없는 학기는 항목 자체가 없다
+}
+
+export interface TermTrendResponseDto {
+  totalScoreMax: number;
+  points: TermTrendPointDto[];               // 전체 기준 시계열 (학기 오름차순)
+  departmentSeries: DepartmentTermSeriesDto[]; // breakdown=department 일 때만 채워짐. 그 외에는 빈 배열
+}
+
+// ─────────────────────────────── (6) GET /dashboard/department-lecture-matrix
+
+export interface DepartmentLectureCellDto {
+  departmentId: string;
+  departmentName: string;
+  studentCount: number;                 // 이 강의를 수강한 해당 학과 인원수
+  averageTotalScore: number;
+  averagePercentage: number;
+  deviationFromLectureAverage: number;  // 해당 강의 전체 평균 대비 편차. 강의 난이도 영향이 상쇄된 값
+}
+
+export interface DepartmentLectureMatrixRowDto {
+  lectureId: string;
+  lectureName: string;
+  term: string;
+  studentCount: number;                  // 강의 전체 수강 인원수
+  averageTotalScore: number;             // 강의 전체 평균 (셀 편차의 기준선)
+  averagePercentage: number;
+  cells: DepartmentLectureCellDto[];     // 평균 합계점수 내림차순
+}
+
+export interface DepartmentLectureMatrixResponseDto {
+  totalScoreMax: number;
+  rows: DepartmentLectureMatrixRowDto[]; // 학기 → 강의명 순 정렬
+}
+
+// ─────────────────────────────── (7) GET /dashboard/student-ranking
+
+export interface StudentRankingItemDto {
+  rank: number;               // SQL RANK() 기준. 동점자는 같은 순위, 다음 순위는 건너뛴다
+  studentNumber: string;
+  studentName: string;        // 성적 레코드에 기록된 이름의 최빈값
+  departmentName: string;     // 성적 레코드 학과의 최빈값. 학적상 소속을 보증하지 않는다
+  lectureCount: number;       // 집계에 포함된 수강 강의 수
+  averageGpa: number;         // 종합 평균 평점
+  averageTotalScore: number;
+  averagePercentage: number;
+}
+
+export interface StudentRankingResponseDto {
+  totalScoreMax: number;
+  items: StudentRankingItemDto[]; // 평균 평점 내림차순 (동점이면 평균 합계점수 내림차순)
+}
+
+// ─────────────────────────────── (8) GET /dashboard/at-risk-students
+
+export interface AtRiskStudentItemDto {
+  studentNumber: string;
+  studentName: string;       // 성적 레코드 이름의 최빈값
+  departmentName: string;    // 성적 레코드 학과의 최빈값
+  lectureCount: number;      // 집계에 포함된 수강 강의 수
+  failCount: number;         // F등급(평점 0) 과목 수
+  averageGpa: number;
+  averageTotalScore: number;
+  averagePercentage: number; // 평균 성취도(만점 대비 %)
+  riskReasons: string[];     // 예: ["F학점 2개", "평균 성취도 60% 미만"]. 두 조건이 다 걸리면 2개가 온다
+}
+
+export interface AtRiskStudentsResponseDto {
+  totalScoreMax: number;
+  averageBelow: number;              // 실제 적용된 평균 성취도 기준(%) — 화면 문구에 이 값을 쓴다
+  failCountAtLeast: number;          // 실제 적용된 F학점 개수 기준 — 화면 문구에 이 값을 쓴다
+  items: AtRiskStudentItemDto[];     // F학점 수 내림차순, 동수면 평균 합계점수 오름차순(위험한 순)
+}
+```
+
+### 5.1 API 계약 요약 (호출 시 반드시 이 표를 따를 것)
+
+| 메서드 · 경로 | 인증 | 요청 | 성공 | 실패 |
+|---|---|---|---|---|
+| `POST /auth/login` | 불필요 | `LoginDto` (JSON) | 200 `LoginResponseDto` | 401 자격증명 오류 |
+| `GET /users/me` | 필요 | — | 200 `User` | 401 |
+| `GET /dashboard/summary` | 필요 | **쿼리 파라미터 없음** | 200 `DashboardSummaryDto` | 401 |
+| `GET /dashboard/score-histogram` | 필요 | 쿼리 (아래 5.4) | 200 `ScoreHistogramResponseDto` | 400 쿼리 형식 오류 / 401 |
+| `GET /dashboard/department-achievement` | 필요 | 쿼리 (아래 5.4) | 200 `DepartmentAchievementResponseDto` | 400 / 401 |
+| `GET /dashboard/lecture-difficulty` | 필요 | 쿼리 (아래 5.4) | 200 `LectureDifficultyResponseDto` | 400 / 401 |
+| `GET /dashboard/component-analysis` | 필요 | 쿼리 (아래 5.4) | 200 `ComponentAnalysisResponseDto` | 400 / 401 |
+| `GET /dashboard/term-trend` | 필요 | 쿼리 (아래 5.4) | 200 `TermTrendResponseDto` | 400 / 401 |
+| `GET /dashboard/department-lecture-matrix` | 필요 | 쿼리 (아래 5.4) | 200 `DepartmentLectureMatrixResponseDto` | 400 / 401 |
+| `GET /dashboard/student-ranking` | 필요 | 쿼리 (아래 5.4) | 200 `StudentRankingResponseDto` | 400 / 401 |
+| `GET /dashboard/at-risk-students` | 필요 | 쿼리 (아래 5.4) | 200 `AtRiskStudentsResponseDto` | 400 / 401 |
+| `GET /lectures` | 필요 | **쿼리 파라미터 없음** | 200 `Lecture[]` (배열 직접, 봉투 없음) | 401 |
+| `POST /lectures` | 필요 | `CreateLectureDto` | 201 `Lecture` | 409 강의명+학기 중복 |
+| `GET /lectures/{id}` | 필요 | — | 200 `Lecture` | 404 |
+| `PATCH /lectures/{id}` | 필요 | `UpdateLectureDto` | 200 `Lecture` | 404 / 409 |
+| `DELETE /lectures/{id}` | 필요 | — | **204 본문 없음** | 404 |
+| `POST /student-scores/upload` | 필요 | `multipart/form-data` (아래 5.2) | 201 `UploadExcelResponseDto` | 400 / 500 |
+| `GET /student-scores` | 필요 | 쿼리 (아래 5.3) | 200 `FindStudentScoresResponseDto` | 401 |
+| `GET /student-scores/{id}` | 필요 | — | 200 `StudentScore` | 404 |
+| `GET /departments` | 필요 | **쿼리 파라미터 없음** | 200 `Department[]` | 401 |
+| `POST /departments` | 필요 | `CreateDepartmentDto` | 201 `Department` | 409 코드 중복 |
+| `GET /departments/{id}` | 필요 | — | 200 `Department` | 404 |
+| `PATCH /departments/{id}` | 필요 | `UpdateDepartmentDto` | 200 `Department` | 404 / 409 |
+| `DELETE /departments/{id}` | 필요 | — | **204 본문 없음** | 404 |
+| `GET /grade-scales` | 필요 | **쿼리 파라미터 없음** | 200 `GradeScale[]` | 401 |
+| `GET /grade-scales/convert` | 필요 | `?score=<0~100>` (required) | 200 `GradeScale` | 404 해당 등급 없음 |
+| `POST /grade-scales` | 필요 | `CreateGradeScaleDto` | 201 `GradeScale` | 400 min>max / 409 등급 중복 |
+| `GET /grade-scales/{id}` | 필요 | — | 200 `GradeScale` | 404 |
+| `PATCH /grade-scales/{id}` | 필요 | `UpdateGradeScaleDto` | 200 `GradeScale` | 400 / 404 / 409 |
+| `DELETE /grade-scales/{id}` | 필요 | — | **204 본문 없음** | 404 |
+| `GET /health` | 불필요 | — | 200 `{ time: string }` | — |
+
+> `204` 응답은 본문이 없다. fetch 래퍼는 204에서 `.json()`을 호출하면 안 되며 `undefined`를 반환해야 한다.
+> `GET /lectures`, `GET /departments`, `GET /grade-scales`는 봉투(`{data, total}`)가 **아니라 배열을 직접** 반환한다. `GET /student-scores`만 봉투다.
+
+### 5.2 엑셀 업로드 요청 사양 (openapi.json `multipart/form-data` 스키마 원문 기준)
+
+| 폼 필드명 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| `file` | binary | **필수** | 성적 엑셀 파일 |
+| `lectureName` | string | **필수** | 성적을 등록할 **강의명** (예: `자료구조`). **강의 id가 아니다.** |
+| `term` | string | 선택 | 개설학기 코드 (예: `2610`). 미입력 시 서버 기본값 `2610` |
+
+- **엑셀 컬럼 순서(고정):** 학번 / 이름 / 학과 / 중간고사점수 / 중간과제점수 / 기말고사점수 / 기말과제점수. 합계점수와 등급은 서버가 계산한다. 이 순서를 업로드 화면에 안내 문구로 그대로 노출한다.
+- **강의는 사전 등록 필수.** 존재하지 않는 강의명이면 500이다. 그래서 화면은 자유 입력이 아니라 `GET /lectures` 드롭다운에서 고르게 하고, 선택된 강의의 `name`과 `term`을 각각 전송한다.
+- **`Content-Type`을 직접 지정하지 않는다.** `FormData`를 body로 넘기면 브라우저가 boundary를 포함해 자동 설정한다. 수동 지정하면 파싱이 깨진다.
+- 허용 확장자: **`.xlsx`, `.xls`** — 파일 선택 `accept` 속성으로 제한하고 제출 전 확장자를 재검증한다. (OpenAPI에 확장자 제약 명시가 없어 결정한 값. 「9. 가정」 참조.)
+
+### 5.3 `GET /student-scores` 쿼리 파라미터 (openapi.json 원문 기준, 전부 optional)
+
+| 이름 | 타입 | 기본값 | 제약 | 의미 |
+|---|---|---|---|---|
+| `page` | number | `1` | `minimum: 1` | 조회할 페이지 번호 (1부터 시작) |
+| `pageSize` | number | `20` | `minimum: 1`, **상한 없음** | 페이지당 개수. 전체 다운로드 등을 위해 상한선을 두지 않는다 |
+| `lectureName` | string | — | — | 강의명 **부분 검색** |
+| `studentName` | string | — | — | 학생 이름 **부분 검색** |
+| `studentNumber` | string | — | — | 학번 **정확히 일치** 검색 |
+| `departmentName` | string | — | — | 학과명 **부분 검색** |
+| `sortBy` | string | — | enum: `studentNumber` \| `studentName` \| `departmentName` \| `totalScore` \| `grade` | 정렬 기준 필드 |
+| `order` | string | `ASC` | enum: `ASC` \| `DESC` | 정렬 방향 |
+
+- **강의 id로 필터하는 파라미터는 없다.** 강의별 조회는 `lectureName`(부분 일치)으로만 가능하며 `term` 필터도 없다. 동일 강의명이 여러 학기에 존재하면 결과가 섞인다 → 화면에 강의명 옆 학기 컬럼을 반드시 노출하고, 이 한계를 「9. 가정」에 기록한다.
+- 값이 빈 문자열인 파라미터는 **전송하지 않는다** (빈 문자열로 부분 검색 시 동작이 보장되지 않음).
+- 표의 enum에 없는 컬럼(중간고사·기말고사 등)은 정렬 UI를 제공하지 않는다.
+
+### 5.4 대시보드 확장 분석 8종의 쿼리 파라미터 (openapi.json 원문 기준)
+
+#### 5.4.1 8개 엔드포인트 공통 필터 (전부 optional)
+
+| 이름 | 타입 | 기본값 | 제약 | 의미 |
+|---|---|---|---|---|
+| `term` | string | — (미전송 시 전체 학기) | 형식 제약 명시 없음. 예시값 `2610` | 개설학기 코드 (YY10=1학기 / YY11=계절 / YY20=2학기 / YY21=계절) |
+| `departmentId` | string | — (전체 학과) | `format: uuid` | 학과 ID 필터 |
+| `lectureId` | string | — (전체 강의) | `format: uuid` | 강의 ID 필터 |
+
+- **세 값은 AND로 결합된다.**
+- **존재하지 않는 id를 줘도 404가 아니라 빈 결과(빈 배열)** 가 온다 → 클라이언트가 "찾을 수 없음" 분기를 만들 필요가 없다. 빈 상태로만 처리한다.
+- **소프트 삭제된 학과/강의에 속한 성적은 서버가 집계에서 제외**한다 → 클라이언트가 `deletedAt`으로 다시 거를 필요가 없다.
+- 잘못된 형식(예: uuid가 아닌 `departmentId`)이면 **400**이다. 이번 라운드에는 값을 보내지 않으므로 400은 실질적으로 발생하지 않지만, 에러 처리 경로는 공통 네트워크 에러와 동일하게 둔다.
+
+#### 5.4.2 엔드포인트별 추가 파라미터 (전부 optional)
+
+| 엔드포인트 | 이름 | 타입 | 기본값 | 제약 | 의미 |
+|---|---|---|---|---|---|
+| `score-histogram` | `bucketSize` | number | `10` | `minimum: 1`, `maximum: 100` | 점수 구간의 폭. 만점을 이 값으로 나눠 구간을 만든다 |
+| `lecture-difficulty` | `minStudentCount` | number | `1` | `minimum: 1` | 이 인원수 이상인 강의만 포함 (소수 인원 강의의 통계 왜곡 제거용) |
+| `term-trend` | `breakdown` | string | `none` | enum: `none` \| `department` | `department`면 `departmentSeries`에 학과별 시리즈가 추가된다 |
+| `student-ranking` | `limit` | number | `10` | `minimum: 1`, `maximum: 100` | 조회할 상위 인원수 |
+| `student-ranking` | `minLectureCount` | number | `1` | `minimum: 1` | 이 강의 수 이상 수강한 학생만 포함 (1과목만 듣고 1위가 되는 왜곡 방지) |
+| `at-risk-students` | `limit` | number | `50` | `minimum: 1`, `maximum: 200` | 조회할 최대 인원수 |
+| `at-risk-students` | `averageBelow` | number | `60` | `minimum: 0`, `maximum: 100` | 평균 성취도가 이 **백분율(%)** 미만이면 위험군. 만점 기준이 아니라 백분율로 입력 |
+| `at-risk-students` | `failCountAtLeast` | number | `1` | `minimum: 1` | F학점을 이 개수 이상 받으면 위험군 |
+
+- `department-achievement`, `component-analysis`, `department-lecture-matrix`에는 **공통 3개 외의 파라미터가 없다.**
+- `at-risk-students`의 `averageBelow`와 `failCountAtLeast`는 **OR로 결합**된다(둘 중 하나만 걸려도 위험군). 나머지 파라미터와의 관계는 AND다.
+
+### 5.5 이번 라운드에서 실제로 보내는 값 (2026-08-01 확정)
+
+「2.1」의 결정에 따라 **공통 필터 3종은 전부 미전송**이다. 추가 파라미터는 아래 값으로 고정하며, 화면에 조작 수단을 제공하지 않는다.
+
+| 엔드포인트 | 전송하는 파라미터 | 값 | 근거 |
+|---|---|---|---|
+| `score-histogram` | — | (미전송 → 서버 기본 `bucketSize=10`) | 10점 단위는 성적 분포의 관습적 눈금이고, 응답의 `bucketSize`를 그대로 화면 문구에 쓰므로 값이 바뀌어도 표시가 어긋나지 않는다 |
+| `department-achievement` | — | — | 추가 파라미터 없음 |
+| `lecture-difficulty` | — | (미전송 → `minStudentCount=1`) | 수강생이 적은 강의를 임의로 감추면 "왜 이 강의가 안 보이지"라는 설명 불가능한 누락이 생긴다. 대신 인원수 컬럼을 노출해 사용자가 스스로 판단하게 한다 |
+| `component-analysis` | — | — | 추가 파라미터 없음 |
+| `term-trend` | — | (미전송 → `breakdown=none`) | 학과별 다중 시리즈는 범례·색 배정·과밀 대응이 필요한 별도 시각 과제다. 「2. Out of scope」 참조 |
+| `department-lecture-matrix` | — | — | 추가 파라미터 없음 |
+| `student-ranking` | `limit` | `10` | 서버 기본값과 동일하지만 **명시적으로 보낸다.** 화면 문구("상위 10명")가 서버 기본값 변경에 흔들리지 않게 하기 위함 |
+| `at-risk-students` | `limit` | `20` | 서버 기본 50은 대시보드 한 섹션에 붙이기엔 너무 길다. 응답에 위험군 총원 필드가 없어 "N명 중 20명"이라고 쓸 수 없으므로, **받은 건수 = 표시 건수**로 맞추고 `items.length === limit`일 때만 "더 있을 수 있음"을 안내한다 (「3.7 (8)」) |
+| `at-risk-students` | `averageBelow`, `failCountAtLeast` | (미전송 → 60 / 1) | 대학 학사경고의 통상 기준선에 부합한다. **화면 문구는 요청값이 아니라 응답의 `averageBelow`·`failCountAtLeast`를 출력**하므로 서버 기본값이 바뀌어도 안내가 거짓말이 되지 않는다 |
+
+---
+
+## 6. 상태 정의
+
+모든 화면의 공통 규칙:
+- **로딩** — 최초 진입은 스켈레톤(표는 행 스켈레톤, 카드는 블록 스켈레톤). 재조회(검색/정렬/페이지 이동)는 기존 내용을 유지한 채 흐림+비활성 오버레이. 화면 전체를 스피너로 덮어 내용이 사라지게 하지 않는다.
+- **네트워크 에러**(fetch 실패, 5xx) — "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요." + [다시 시도].
+- **권한 에러**(401) — 화면에 에러를 그리지 않는다. 「4.3 결정 3」의 전역 처리로 즉시 로그인 이동.
+- **검증 실패**(400/409) — 폼 화면은 해당 필드 하단 인라인 메시지, 필드 특정이 불가하면 폼 상단 배너. 목록 화면은 토스트.
+- **404** — "요청한 데이터를 찾을 수 없습니다." 빈 상태 + 상위 목록으로 가는 링크.
+- 성공 토스트는 3초 후 자동 소멸, 에러 토스트/배너는 수동 닫기.
+
+| 화면 | 로딩 | 빈 상태 | 에러 | 성공 |
+|---|---|---|---|---|
+| `/login` | 제출 중 버튼 로딩 + 폼 비활성 | 해당 없음 | 401 → "로그인 ID 또는 비밀번호가 올바르지 않습니다." (비밀번호만 초기화) / 네트워크 → 공통 문구 / 검증 → 빈 값이면 필드별 "필수 입력입니다." | `next` 또는 `/dashboard`로 이동. `reason=expired`로 진입했다면 상단에 "세션이 만료되었습니다." 안내 |
+| 인증 레이아웃 (`/users/me`) | 전체 화면 로딩. 자식 화면 미렌더 | 해당 없음 | 401 → 로그아웃 후 로그인 이동 / 네트워크 → "사용자 정보를 불러오지 못했습니다." + [다시 시도] + [로그아웃] | GNB에 사용자 이름 표시, 자식 렌더 |
+| `/dashboard` | **섹션 단위 스켈레톤** — 각 섹션이 자기 자리에서 개별로 로딩된다 (「6.1」) | `totalStudentScores === 0` → "아직 등록된 성적이 없습니다." + [성적 입력하러 가기] **하나만** 표시하고 확장 분석 8섹션은 렌더하지 않는다. 개별 통계/분석 배열이 빈 배열이면 해당 섹션만 자기 빈 상태 문구 | **섹션 단위 격리** — 실패한 섹션 자리에만 에러 + [다시 시도], 나머지 섹션은 정상 표시 (「6.1」) | 5개 요약 지표 + 등급분포 + 확장 분석 8섹션(「3.7」) + 학과별/강의별/학기별 통계 |
+| `/lectures` | 표 행 스켈레톤 | 전체 0건 → "등록된 수강과목이 없습니다." + [수강과목 생성] / 검색 결과 0건 → "검색 결과가 없습니다." + [검색어 지우기] | 공통 네트워크 에러 / 삭제 404 → "이미 삭제된 강의입니다." 토스트 후 목록 새로고침 | 표 렌더, 총 N건 표시 |
+| `/lectures/new`, `/lectures/[id]/edit` | 수정 화면은 초기 조회 중 폼 스켈레톤. 제출 중 버튼 로딩 | 해당 없음 | 409 → 강의명 필드 하단 "이미 등록된 강의명과 학기 조합입니다." / 404(수정) → 빈 상태 / 검증 → 강의명 미입력 시 "강의명은 필수입니다.", 학기 형식 불일치 시 "학기 코드는 YY10/YY11/YY20/YY21 형식의 4자리입니다." | 토스트 후 `/lectures`로 이동 |
+| `/lectures/[id]` | 카드 스켈레톤 | 해당 없음 | 404 → 빈 상태 + [목록으로] | 상세 필드 표시 |
+| `/scores/upload` | 강의 목록 로딩 중 드롭다운 비활성 / 업로드 중 진행 표시 + 폼 전체 잠금 | 강의가 0건 → "먼저 수강과목을 등록해 주세요." + [수강과목 생성]. 업로드 영역 비활성 | 400 → "엑셀 파일을 첨부하고 강의를 선택해 주세요." 또는 서버 메시지 / 500 → "해당 강의에 이미 등록된 성적이 있거나, 존재하지 않는 강의이거나, 파일 내 학번이 중복되었습니다. 아무것도 저장되지 않았습니다." / 확장자 불일치(클라이언트) → "xlsx 또는 xls 파일만 업로드할 수 있습니다." / 네트워크 → 공통 문구 | `failedRows.length === 0` → "N건이 모두 등록되었습니다." + [성적 조회하기]. `> 0` → "N건 등록, M건 실패" + 실패 행 표(행 번호·사유) + "실패한 행을 수정해 다시 업로드하세요. 단, 정상 등록된 행이 있으므로 재업로드 시 중복 오류가 발생할 수 있습니다." 안내 |
+| `/scores` | 표 행 스켈레톤 (재조회 시 흐림 유지) | 강의 미선택 → "조회할 수강과목을 선택하세요." / `total === 0` → "조건에 맞는 성적이 없습니다." + [검색조건 초기화] | 공통 네트워크 에러 + [다시 시도] | 표 + 페이지네이션 (`page` / `totalPages`, 총 `total`건 표기) |
+| `/scores/[id]` | 카드 스켈레톤 | 해당 없음 | 404 → "성적 정보를 찾을 수 없습니다." + [목록으로] | 학생·강의·학과·항목별 점수·합계·등급 표시 |
+| `/departments` | 표 행 스켈레톤 | "등록된 학과가 없습니다." + [학과 생성] | 공통 / 삭제 404 → 토스트 후 새로고침 | 표 렌더 |
+| `/departments/new`, `/departments/[id]/edit` | 위 폼 규칙과 동일 | 해당 없음 | 409 → 코드 필드 하단 "이미 사용 중인 학과 코드입니다." / 404 / 검증 → 코드·학과명 필수 | 토스트 후 `/departments`로 이동 |
+| `/grade-scales` | 표 행 스켈레톤 | "등록된 학점환산 기준이 없습니다." (서버가 최초 기동 시 A+~F 9개를 시드하므로 실제로는 드묾) | 공통 / 변환 도구 404 → 변환 결과 영역에 "해당 점수에 해당하는 등급 기준이 없습니다." (표 자체는 정상 유지) | 표 렌더 + 변환 도구 사용 가능 |
+| `/grade-scales/new`, `/grade-scales/[id]/edit` | 위 폼 규칙과 동일 | 해당 없음 | 400 → "최소 점수는 최대 점수보다 클 수 없습니다." / 409 → 등급 필드 하단 "이미 등록된 등급입니다." / 404 / 검증 → 4개 필드 필수, 점수 0~100 범위, gpa 0 이상 | 토스트 후 `/grade-scales`로 이동 |
+
+### 6.1 `/dashboard` 섹션 단위 상태 규칙 (2026-08-01 확장)
+
+섹션이 9개(기존 요약 1 + 확장 8)로 늘어나면서 "화면 하나 = 상태 하나"가 더 이상 성립하지 않는다. 아래를 확정한다.
+
+**결정 1 — 조회 단위는 섹션이다. 로딩·빈 상태·에러·재시도를 섹션마다 독립적으로 갖는다.**
+
+근거:
+- 9개는 서로 다른 엔드포인트이고 실패도 독립적이다. `Promise.all` 한 덩어리로 묶으면 **9개 중 하나만 실패해도 대시보드 전체가 에러 화면**이 된다. 실패 확률이 9배로 곱해지는 구조를 만들 이유가 없다.
+- 응답 시간도 제각각이다(교차표·랭킹은 집계 비용이 크다). 한 덩어리로 기다리면 **화면 완성 시간이 가장 느린 하나에 끌려간다.** 섹션 단위면 빠른 섹션부터 즉시 채워진다.
+- 기존 자산 `useAsyncData`가 이미 `(data, isLoading, isRefetching, error, refetch)`를 조회 1건 단위로 제공한다. 섹션 = 훅 1개가 자연스러운 매핑이며 새 상태 관리 장치가 필요 없다.
+
+**결정 2 — 9개 요청은 마운트 시 병렬 발사한다. 순차 호출·의존 대기를 만들지 않는다.**
+
+- 확장 분석 8건은 `summary`의 도착을 기다리지 않는다. (성적 0건일 때 8섹션을 감추는 처리는 **렌더 억제**이지 호출 억제가 아니다 — 「3.8」)
+- HTTP/1.1 환경에서는 브라우저의 호스트당 동시 연결 한도(통상 6)로 일부가 대기열에 들어갈 수 있다. 그래도 **직렬화하지 않는다.** 대기열은 브라우저가 알아서 소화하고, 섹션별 스켈레톤이 그 시간을 시각적으로 흡수한다. (「9. 가정」에 기록)
+
+**결정 3 — 재시도는 섹션 로컬이다.** 섹션 에러의 [다시 시도]는 그 섹션의 요청만 다시 보낸다. **화면 상단에 "전체 다시 조회" 버튼을 두지 않는다** — 어떤 섹션이 실패했는지 흐려지고, 이미 성공한 섹션까지 불필요하게 재호출한다.
+
+**결정 4 — 401은 섹션이 처리하지 않는다.** 「4.3 결정 3」의 전역 단일 처리에 맡긴다. 여러 섹션이 동시에 401을 받아도 리다이렉트는 1회로 억제되며, 섹션은 401 에러 UI를 그리지 않는다.
+
+**결정 5 — 섹션별 상태 표현.**
+
+| 상태 | 표현 |
+|---|---|
+| 로딩(최초) | 그 섹션 자리에 스켈레톤. **섹션 자리(높이)를 미리 확보**해 응답 도착 시 아래 섹션들이 튀지 않게 한다 |
+| 재조회 | 기존 내용을 유지한 채 흐림 + 비활성 (공통 규칙과 동일) |
+| 빈 상태 | 그 섹션 안에 문구만. 섹션 제목은 유지한다(제목까지 사라지면 무엇이 비었는지 알 수 없다) |
+| 에러(네트워크·5xx·400) | 그 섹션 안에 공통 네트워크 에러 문구 + [다시 시도]. **다른 섹션에 영향을 주지 않는다** |
+| 성공 | 「3.7」의 각 섹션 내용 |
+
+**결정 6 — 섹션 제목·설명은 데이터 도착 전에도 렌더한다.** 로딩 중에도 사용자가 "무엇이 오고 있는지" 읽을 수 있고, 스크린리더가 문서 구조(제목 계층)를 먼저 파악할 수 있다.
+
+---
+
+## 7. 수용 기준
+
+### 인증
+- [ ] 토큰 쿠키가 없는 상태에서 `/dashboard`, `/lectures`, `/scores`, `/departments`, `/grade-scales` 각각에 URL 직접 입력으로 접근하면 `/login?next=<해당 경로>`로 리다이렉트되고, 보호 화면의 DOM이 렌더된 흔적이 없다.
+- [ ] 유효한 자격증명으로 로그인하면 `access_token` 쿠키가 생성되고 `/dashboard`로 이동한다.
+- [ ] `/login?next=%2Flectures`로 진입해 로그인하면 `/dashboard`가 아니라 `/lectures`로 이동한다.
+- [ ] `next=https://evil.example.com` 또는 `next=//evil.example.com`으로 진입해 로그인하면 `/dashboard`로 이동한다 (외부 리다이렉트 없음).
+- [ ] 잘못된 자격증명으로 로그인하면 401 응답 후 화면 이동 없이 "로그인 ID 또는 비밀번호가 올바르지 않습니다."가 표시되고 `loginId` 입력값은 유지된다.
+- [ ] 쿠키의 토큰을 임의 문자열로 조작하고 `/lectures`에 접근하면 `/users/me` 401에 의해 `/login?next=%2Flectures&reason=expired`로 이동하고 "세션이 만료되었습니다." 안내가 보인다.
+- [ ] 로그인 상태로 `/login`에 접근하면 `/dashboard`로 되돌아간다.
+- [ ] 로그아웃하면 쿠키가 삭제되고 `/login`으로 이동하며, 브라우저 뒤로가기로 `/dashboard` 내용을 다시 볼 수 없다.
+- [ ] 모든 인증 필요 요청의 헤더에 `Authorization: Bearer <accessToken>`이 붙는다 (개발자도구 네트워크 탭으로 확인 가능).
+- [ ] 어떤 API 요청 URL에도 `/api` 접두어가 들어가지 않는다 (예: `http://58.239.220.254:3330/lectures`).
+
+### 앱 셸 (사이드바 + 상단바)
+- [ ] 상단바에 `/users/me`의 `name`이 표시된다. `name`이 비어 있으면 `loginId`가 표시된다.
+- [ ] 좌측 사이드바에서 「수강과목 관리 > 목록/생성」, 「성적관리 > 성적입력/수강과목별 성적조회」, 「기준정보 관리 > 학과 관리/학점환산기준 관리」로 각각 이동할 수 있고, 「대시보드」는 그룹 없는 단일 링크로 `/dashboard`로 이동한다.
+- [ ] 데스크탑(≥1024)에서 사이드바가 별도 조작 없이 항상 보인다.
+- [ ] 1024 미만 폭에서는 사이드바가 기본적으로 숨겨지고, 상단바의 햄버거 버튼을 누르면 드로어로 열리며, 링크 선택·배경 클릭·`Esc` 중 어느 것으로도 닫힌다.
+- [ ] 그룹 헤더를 클릭하면 하위 링크가 펼쳐지고 다시 클릭하면 접히며, 그룹 헤더 클릭으로는 페이지가 이동하지 않는다.
+- [ ] 현재 경로가 속한 그룹은 화면 진입 시 펼쳐져 있고, 해당 하위 링크가 활성 상태로 표시된다(`/lectures/3/edit`에서는 「수강과목 관리 > 목록」이 활성).
+- [ ] `/login`에는 사이드바·상단바가 렌더되지 않는다.
+
+### 대시보드
+- [ ] `/dashboard`가 `GET /dashboard/summary`를 **1회** 호출하고, `totalDepartments`·`totalLectures`·`totalStudentScores`·`averageTotalScore`·`averageGpa`가 각각 화면에 표시된다.
+- [ ] `gradeDistribution`의 각 항목이 등급·인원수·비율(%)로 표시된다.
+- [ ] `departmentStats`·`lectureStats`·`termStats`가 각각 별도 영역에 표시되며, `lectureStats`는 강의명과 학기를 함께 보여준다.
+- [ ] 통계 배열이 빈 배열일 때 해당 영역이 깨지지 않고 "데이터 없음"을 표시한다.
+
+### 대시보드 — 확장 분석 8종 (2026-08-01 추가)
+
+공통:
+- [ ] `/dashboard` 진입 시 네트워크 탭에 `summary` 1건 + 확장 분석 8건, **총 9건의 요청이 각각 1회씩** 기록되고, 8건이 서로의 응답을 기다리지 않고 발사된다(요청 시작 시각이 겹친다).
+- [ ] 9개 요청의 쿼리스트링에 `term`·`departmentId`·`lectureId`가 **하나도 포함되지 않는다** (이번 라운드 무필터 결정).
+- [ ] 화면에 학기/학과/강의를 고르는 필터 컨트롤이 **존재하지 않는다.**
+- [ ] 8개 섹션 중 하나의 응답을 500으로 만들면(또는 네트워크 차단), **그 섹션에만** 에러 문구와 [다시 시도]가 나타나고 나머지 7개 섹션과 KPI·등급분포는 정상적으로 값을 표시한다.
+- [ ] 실패한 섹션의 [다시 시도]를 누르면 **그 엔드포인트 1건만** 재요청되고 다른 섹션의 요청은 발생하지 않는다.
+- [ ] `summary.totalStudentScores`가 0이면 "아직 등록된 성적이 없습니다." 안내만 보이고 **확장 분석 8개 섹션이 DOM에 렌더되지 않는다.**
+- [ ] 각 섹션은 응답 도착 전 자기 자리에 스켈레톤을 표시하며, 응답이 도착해도 아래 섹션이 위아래로 크게 튀지 않는다.
+- [ ] 각 섹션의 제목이 로딩 중에도 표시된다.
+- [ ] 새 라우트가 추가되지 않았고(`/dashboard` 외 대시보드 관련 경로 없음), 사이드바 메뉴 항목 수가 이전과 동일하다.
+- [ ] 백분율·게이지 계산에 클라이언트 상수 100이 아니라 응답의 `totalScoreMax`가 사용된다(응답을 `totalScoreMax: 200`으로 바꿔도 표시가 일관된다).
+
+섹션별:
+- [ ] **점수 구간 히스토그램** — `buckets`의 모든 항목이 `bucketIndex` 오름차순으로 렌더되고, `count === 0`인 구간도 생략되지 않고 표시된다. 섹션 문구에 응답의 `bucketSize`와 `totalCount`가 반영된다.
+- [ ] **학과별 학업성취도** — 각 학과 행에 인원수·평균·중앙값·표준편차·최소·최대·평균 평점·A비율·F비율이 모두 표시되고, `stddevTotalScore`(또는 `medianTotalScore`)가 `null`인 학과는 `0`이 아니라 대체 문자와 "계산 불가" 취지의 설명으로 표시된다.
+- [ ] **학과 × 등급 교차표** — 열 머리가 응답 `grades` 배열의 순서 그대로이고, 모든 학과 행의 칸 수가 `grades.length`와 같으며 `count === 0`인 칸이 빈칸이 아니라 `0`으로 표시된다.
+- [ ] **강의별 난이도** — 섹션에 `overallAverageTotalScore`가 기준선으로 표시되고, 각 강의의 `deviationFromOverall`이 **부호와 함께**(`+`/`−`) 표시된다.
+- [ ] **학점 인플레이션** — `gradeInflation === true`인 강의에만 "학점 인플레이션 의심" 라벨이 붙고, 판정 근거("A등급 비율 50% 이상")가 화면에서 확인 가능하다. `false`인 강의에는 라벨이 없다.
+- [ ] **난이도 이상치** — `difficultyOutlier`가 `"EASY"`면 "평균 대비 쉬움", `"HARD"`면 "평균 대비 어려움" 라벨이 붙고, `null`이면 아무 라벨도 렌더되지 않는다(빈 배지 없음). 두 플래그가 동시에 참인 강의는 라벨 2개가 함께 보인다.
+- [ ] **평가항목별 분석** — 4개 항목 평균이 모두 표시되고, 항목별 백분율(%)은 어디에도 표시되지 않는다. `examVsAssignmentGap`과 `improvement`는 숫자만이 아니라 부호의 의미를 설명하는 문장과 함께 표시된다. `byLecture` 배열의 모든 항목이 표에 나타난다.
+- [ ] **학기별 추이** — `points`가 학기 오름차순으로 표시되고 학기 코드가 `formatTerm` 라벨로 변환된다. `points.length === 1`이면 "비교할 학기가 1개뿐입니다." 안내가 보인다. `departmentSeries`가 빈 배열이므로 학과별 시리즈 영역이 렌더되지 않는다.
+- [ ] **학과 × 강의 교차표** — 각 행에 강의명·학기·강의 전체 평균이 표시되고, 각 칸에 학과명·인원수·평균·`deviationFromLectureAverage`(부호 포함)가 표시된다. 표가 넓어져도 페이지 전체가 아니라 표 컨테이너 안에서만 가로 스크롤된다.
+- [ ] **학생 랭킹** — `rank`가 응답값 그대로 표시되어 동점 구간에서 `1, 2, 2, 4`처럼 건너뛰는 순위가 재계산되지 않는다. 요청에 `limit=10`이 포함된다. "이름·학과는 성적 데이터 기준 대표값" 각주가 있다.
+- [ ] **위험군 학생** — 요청에 `limit=20`이 포함된다. 각 행의 `riskReasons` 배열 원소가 **전부** 표시된다(2개면 2개 다). 섹션 문구에 응답의 `failCountAtLeast`·`averageBelow` 값과 두 조건이 **OR**임이 명시된다.
+- [ ] **위험군 학생 — 경계 케이스** — `items.length`가 요청 `limit`과 같으면 "더 있을 수 있습니다" 안내가 보이고, `items`가 비어 있으면 에러 톤이 아닌 중립/긍정 톤으로 "기준에 해당하는 위험군 학생이 없습니다."가 표시된다.
+
+### 수강과목 관리
+- [ ] `/lectures`가 `GET /lectures` 결과를 표로 표시하고 강의코드·강의명·학기를 보여준다.
+- [ ] 목록의 검색·정렬·페이지네이션이 **추가 API 호출 없이** 동작한다 (`GET /lectures`에 쿼리 파라미터가 없으므로).
+- [ ] 강의명만 입력해 생성하면 201이 반환되고, 목록에 `term`이 `2610`으로 표시된다.
+- [ ] 이미 존재하는 강의명+학기로 생성하면 409를 받아 "이미 등록된 강의명과 학기 조합입니다."가 강의명 필드 하단에 표시되고 폼에 머문다.
+- [ ] 수정 화면 진입 시 기존 값이 채워져 있고, 변경한 필드만 `PATCH` 본문에 담긴다.
+- [ ] 삭제는 확인 모달을 거치며, 204 응답 후 목록에서 사라진다.
+
+### 성적입력 (엑셀 업로드)
+- [ ] 강의 드롭다운이 `GET /lectures`로 채워지고, 각 옵션에 강의명과 학기가 함께 표시된다.
+- [ ] 업로드 요청이 `multipart/form-data`이며 `file`, `lectureName`, `term` 세 필드를 담는다 (`lectureName`은 강의 id가 아닌 강의명).
+- [ ] 요청 헤더에 `Content-Type`을 코드가 직접 지정하지 않는다 (boundary 자동 설정).
+- [ ] `.csv` 등 허용되지 않는 확장자를 선택하면 요청을 보내지 않고 클라이언트 검증 메시지를 표시한다.
+- [ ] 201 응답의 `createdCount`가 "N건 등록"으로 표시된다.
+- [ ] `failedRows`가 비어 있지 않으면 각 항목의 `row`와 `reason`이 표로 모두 표시된다.
+- [ ] `failedRows`가 비어 있으면 실패 표가 렌더되지 않고 전량 성공 문구가 표시된다.
+- [ ] 500 응답 시 "아무것도 저장되지 않았습니다."라는 취지의 문구가 표시된다 (부분 저장 안내와 구분됨).
+- [ ] 업로드 진행 중에는 [업로드] 버튼이 비활성이며 중복 제출이 발생하지 않는다.
+
+### 수강과목별 성적조회
+- [ ] 강의를 선택하기 전에는 `GET /student-scores`를 호출하지 않는다.
+- [ ] 강의 선택 시 `lectureName` 파라미터로 조회하고, 결과 표에 학번·이름·학과·중간고사·중간과제·기말고사·기말과제·합계·등급이 표시된다.
+- [ ] 결과 표에 강의 학기가 표시되어, 동일 강의명이 여러 학기에 걸쳐 있어도 구분할 수 있다.
+- [ ] 페이지 이동 시 `page` 파라미터가 바뀌어 재조회되고, `totalPages`를 넘는 페이지로 이동할 수 없다.
+- [ ] `pageSize`를 20 이외의 값(예: 50)으로 바꿀 수 있고 요청에 반영된다.
+- [ ] 학생이름/학번/학과명 검색이 각각 `studentName`/`studentNumber`/`departmentName` 파라미터로 전송되고, 검색 시 `page`가 1로 초기화된다.
+- [ ] 비어 있는 검색 필드는 쿼리스트링에 포함되지 않는다.
+- [ ] 학번·이름·학과명·합계점수·등급 헤더 클릭 시 `sortBy`가 해당 값으로, `order`가 `ASC`↔`DESC`로 토글되어 재조회된다. 그 외 컬럼 헤더는 정렬 UI가 없다.
+- [ ] 검색/정렬/페이지 상태가 URL 쿼리에 반영되어, 새로고침 후에도 동일한 결과가 나온다.
+- [ ] `total === 0`이면 빈 상태와 [검색조건 초기화]가 보이고, 초기화 시 강의 선택만 남는다.
+
+### 기준정보
+- [ ] `/departments`에서 학과 생성·수정·삭제가 모두 동작하고, 중복 코드 생성 시 409 메시지가 표시된다.
+- [ ] `/grade-scales`에서 기준 생성·수정·삭제가 모두 동작한다.
+- [ ] `minScore > maxScore`로 제출하려 하면 클라이언트 검증에서 막히고, 서버 400을 받아도 동일 메시지가 표시된다.
+- [ ] 점수 변환 도구에 87을 입력하면 `GET /grade-scales/convert?score=87`을 호출하고 반환된 `grade`와 `gpa`를 표시한다.
+- [ ] 변환 도구에 0~100 범위 밖의 값은 입력·전송되지 않는다.
+
+### 공통
+- [ ] 204 응답을 받는 삭제 요청에서 JSON 파싱 에러가 발생하지 않는다.
+- [ ] 모든 목록·상세·폼 화면에 로딩 상태와 에러 상태가 각각 존재하며, 데이터 없이 화면이 빈 채로 남는 경우가 없다.
+- [ ] 회원가입으로 가는 링크나 화면이 애플리케이션 어디에도 없다.
+- [ ] 375px 폭에서 모든 화면이 가로 스크롤 없이 사용 가능하다 (넓은 표는 표 자체 컨테이너 안에서만 가로 스크롤).
+
+---
+
+## 8. 재사용할 기존 자산
+
+> **8.0은 2026-07-29 최초 작성 시점의 기록이다.** 이후 전 화면이 구현되었으므로, **2026-08-01 확장 분석 라운드의 실제 재사용 대상은 「8.1」을 본다.**
+
+### 8.0 (2026-07-29 시점)
+
+**없음(신규 프로젝트).**
+
+작업 디렉터리 `/Users/ethanhong/work/amelie/univ_lec/frontend/lecture_vsc`에는 현재 `REQ/`와 `.claude/`만 존재한다. `components/`, `hooks/`, `lib/`, `types/`, `app/` 어느 것도 없고 `package.json`도 없다. 다른 기능의 `spec.md`도 없다 — 이 문서가 첫 스펙이다.
+
+따라서 `frontend-dev`는 다음을 **신규로** 만들어야 한다. (아래는 위 요구를 만족하기 위해 반드시 존재해야 하는 것들의 목록이지 구현 지시가 아니다. 파일 경로·분할 방식은 구현자 재량.)
+
+- Next.js(App Router) + TypeScript + Tailwind CSS 프로젝트 초기 구성
+- `app/globals.css` + `tailwind.config.ts` — 스타일 토큰의 단일 진실 공급원 (값 정의는 `design.md`를 따른다)
+- API 타입 정의 — 「5. 데이터 모델」의 인터페이스
+- 인증 컨텍스트 / 토큰 저장·삭제 유틸 / 중앙 fetch 래퍼 (401 단일 처리 포함)
+- `middleware.ts` 라우트 가드
+- 공통 UI: GNB, 표, 페이지네이션, 폼 필드, 버튼, 모달, 토스트, 스켈레톤, 빈 상태, 에러 상태
+- 환경변수 `NEXT_PUBLIC_API_BASE_URL` (기본값 `http://58.239.220.254:3330`)
+
+### 8.1 확장 분석 라운드(2026-08-01)에서 재사용할 자산 — 실제 파일 확인 결과
+
+아래는 코드베이스를 직접 훑어 확인한 목록이다. **새 섹션을 만들면서 이들과 같은 역할의 컴포넌트를 새로 만들지 않는다.**
+
+| 파일 | 무엇 | 확장 분석에서의 용도 |
+|---|---|---|
+| `components/data/DataTable.tsx` | 프로젝트의 **유일한 표 컴포넌트**. `Column<T>` 정의 한 벌로 `<md` 카드 스택 / `≥md` 표 두 렌더러를 모두 처리. 정렬 헤더·스켈레톤(`state="loading"`)·빈 상태(`emptyState`)·에러(`state="error"` + `onRetry`)·재조회 흐림·`stickyFirstColumn`·`showScrollHint`·`surface="plain"`이 전부 내장 | 학과별 성취도, 강의별 난이도, 강의별 평가항목, 학기별 추이, 학과×강의 교차표, 랭킹, 위험군 — **표 성격의 7개 섹션 전부**. 특히 교차표의 `stickyFirstColumn`과 `showScrollHint`는 이미 있다. `surface="plain"`은 `Card` 안에 표를 넣을 때 테두리 중복을 막는다 |
+| `components/ui/Card.tsx` (`Card`, `CardHeader`) | 섹션 컨테이너와 제목 슬롯 | 8개 섹션의 껍데기. 「6.1 결정 6」의 "로딩 중에도 제목 표시"는 `CardHeader`를 스켈레톤 바깥에 두면 충족된다 |
+| `components/data/MetricCard.tsx` | 라벨·값·단위·힌트·아이콘·`tone`·`emphasis`·`progress`(게이지) | 섹션 상단 요약 수치(예: 강의별 난이도의 `overallAverageTotalScore`, 평가항목 분석의 시험/과제 평균 4장) |
+| `components/data/DistributionBar.tsx` | 비율 가로 막대 리스트. 현재 시그니처가 `GradeDistributionItemDto[]`(등급/인원/비율)에 **결합되어 있다** | 점수 구간 히스토그램에 재사용 후보. 다만 등급 톤 매핑(`getGradeTone`)에 묶여 있어 **그대로는 못 쓴다** → 시그니처 일반화(라벨/값/비율) 또는 별도 막대 컴포넌트 여부는 `ui-ux-designer`·`frontend-dev`가 판단한다. **새로 만들 경우에도 기존 막대와 시각적으로 다른 물건이 되어서는 안 된다** |
+| `components/data/GradeComboChart.tsx` | 등급 분포 콤보 차트(차트 라이브러리 없이 CSS) | 히스토그램·학기별 추이의 시각 표현 참고 기준. 차트 라이브러리 도입 여부는 `ui-ux-designer` 판단 사항 |
+| `components/data/GradeDistributionPanel.tsx` | 위 둘을 감싸 **로딩/빈 판정을 한 곳에서** 하는 패널. `DistributionEmptyState` 포함 | "패널이 로딩·빈 상태를 단일 지점에서 판정한다"는 패턴을 8개 섹션이 그대로 따른다 |
+| `components/ui/Badge.tsx` (`Badge`, `BadgeTone`) | 톤별 배지 | **학점 인플레이션 / EASY / HARD 라벨**의 표현 수단 |
+| `components/ui/GradeBadge.tsx` (`GradeBadge`, `getGradeTone`) | 등급 문자 → 톤 매핑 + 배지 | 학과×등급 교차표의 등급 축 헤더 |
+| `components/feedback/AlertBanner.tsx` | `tone` + `title` + `action` 배너 | 섹션 단위 에러 표시 + [다시 시도] 버튼 슬롯 |
+| `components/feedback/EmptyState.tsx` | 제목·설명·액션 빈 상태 | 섹션별 빈 상태 |
+| `components/feedback/Skeleton.tsx` (`Skeleton`, `CardListSkeleton`, `MetricCardsSkeleton`, `DetailSkeleton`) | 스켈레톤 4종 | 섹션별 로딩. 표 섹션은 `DataTable state="loading"`이 자체 처리하므로 별도 스켈레톤이 필요 없다 |
+| `components/ui/Button.tsx` | 버튼 | 섹션 [다시 시도] |
+| `components/layout/PageContainer.tsx`, `components/ui/PageHeader.tsx` | 페이지 폭(`width="wide"`)·헤더 | 기존 `/dashboard` 골격 그대로 |
+| `hooks/useAsyncData.ts` | `(data, isLoading, isRefetching, error, refetch)` 단위 조회 훅. `enabled` 인자로 조회 억제 가능 | **섹션 1개 = 훅 1개.** 「6.1 결정 1·2·3」이 이 훅만으로 성립한다. `fetcher`는 `useCallback`으로 고정해야 한다(현 대시보드 코드가 이미 그렇게 한다) |
+| `lib/api/client.ts` (`apiRequest`, `ApiError`, 쿼리스트링 빌더) | 401 전역 처리·`undefined`/빈 문자열 파라미터 자동 제외·204 처리 | 8개 엔드포인트 호출. **빈 필터 객체를 넘겨도 쿼리스트링이 붙지 않는 동작이 이미 보장된다** |
+| `lib/api/endpoints.ts` | 엔드포인트 함수 모음. `fetchDashboardSummary()`가 이미 있다 | 여기에 8개 함수를 **같은 파일·같은 주석 스타일로** 추가한다. 각 함수는 「5.0」의 `DashboardFilterQuery`를 선택 인자로 받는 시그니처로 정의한다 |
+| `types/api.ts` | 모든 API 타입의 단일 위치. 이미 `DashboardSummaryDto` 등 대시보드 타입이 들어 있다 | 「5.0」의 인터페이스를 이 파일에 이어서 추가한다 |
+| `lib/format.ts` | `formatNumber(value, digits)`, `formatCount`, `formatTerm`, `EMPTY_VALUE_PLACEHOLDER("—")` | 소수 자릿수·천단위·학기 라벨·**null 값의 대체 문자 표시**. `formatNumber`가 `null`/`undefined`/`NaN`에서 `—`를 반환하므로 「3.7 (2)」의 null 처리 절반이 이미 구현되어 있다(나머지 절반은 "계산 불가" 설명 문구) |
+| `lib/constants.ts` | `MAX_SCORE`, `MAX_GPA`, `NETWORK_ERROR_MESSAGE`, `SKELETON_DELAY_MS` 등 | 에러 문구·GPA 만점. **단, 백분율 분모는 `MAX_SCORE`가 아니라 응답 `totalScoreMax`를 쓴다**(「3.7」 공통 전제) |
+| `lib/distribution.ts` | 등급 분포 요약(`summarizeGradeDistribution`) | 히스토그램 최다 구간 강조 시 같은 패턴을 참고 |
+| `app/(authed)/dashboard/page.tsx` | 현재 대시보드. `useCallback` + `useAsyncData` 사용, `StatBlock` 내부 컴포넌트로 통계 3블록을 공통화한 선례 | **이 파일에 섹션을 이어 붙인다.** 다만 섹션이 9개가 되면 한 파일이 과대해지므로 섹션 컴포넌트를 `components/features/dashboard/` 아래로 분리하는 것을 권한다(파일 분할 방식은 구현자 재량) |
+
+**새로 필요한 것 (신규):**
+- 「5.0」의 TypeScript 인터페이스 (`types/api.ts`에 추가)
+- 8개 조회 함수 (`lib/api/endpoints.ts`에 추가)
+- 8개 섹션 컴포넌트 — 단, 위 표의 기존 컴포넌트를 **조합**해서 만든다. 표·카드·배지·빈 상태·에러 배너를 새로 짜지 않는다.
+- 교차표(학과×등급, 학과×강의) 렌더 — `DataTable`의 `Column<T>` 정의로 표현 가능한지, 별도 매트릭스 렌더러가 필요한지는 `ui-ux-designer`의 레이아웃 결정 후 판단한다. **선행 판단을 여기서 못 박지 않는다.**
+
+---
+
+## 9. 가정 및 미결 사항
+
+### 결정한 가정 (근거와 함께)
+
+1. **API Base URL에 `/api`를 붙이지 않는다.** 사용자가 준 주소는 Swagger UI 경로다. `GET /health` 200 / `GET /api/health` 404로 직접 확인했다.
+2. **토큰은 JS 접근 가능한 쿠키에 저장한다.** middleware 가드가 쿠키를 요구하고, Bearer 헤더를 클라이언트가 붙여야 해 HttpOnly가 불가능하다. XSS 노출을 인지한 채 채택하며, BFF 프록시로의 전환은 후속 과제로 남긴다.
+3. **`next` 파라미터로 원래 경로에 복귀시킨다.** 내부 경로(`/`로 시작하고 `//`가 아닌 것)만 허용해 오픈 리다이렉트를 막는다.
+4. **토큰 갱신(refresh)은 없다.** OpenAPI에 refresh 엔드포인트가 없다. 만료되면 재로그인이 유일한 경로다.
+5. **토큰 만료 시간은 백엔드가 결정하며 프론트가 선제 갱신하지 않는다.** 만료 감지는 401 응답으로만 한다. (JWT `exp`를 디코드해 사전 경고를 띄우는 것은 선택 사항이며 수용 기준에 포함하지 않았다.)
+6. **역할·권한 분기가 없다.** `User` 스키마에 role 필드가 없어 로그인한 모든 사용자가 전 기능에 접근한다.
+7. **엑셀 허용 확장자를 `.xlsx`, `.xls`로 정했다.** OpenAPI에 제약 명시가 없다. 실제 서버가 `.xls`(구형식)를 거부할 가능성이 있으며, 그 경우 `.xlsx` 단독으로 좁힌다.
+8. **업로드 파일 크기 상한을 명시하지 않는다.** 서버 제한값을 모른다. 413/500 응답은 공통 에러 문구로 처리한다.
+9. **`GET /lectures`, `/departments`, `/grade-scales`에는 서버 검색·페이지네이션이 없다.** 전체 배열을 받아 클라이언트에서 처리한다. 데이터가 수천 건 규모로 커지면 이 방식이 무너지므로, 그때는 백엔드에 쿼리 파라미터 추가를 요청해야 한다 (미결).
+10. **성적 조회의 강의 필터는 `lectureName` 부분 일치가 전부다.** `lectureId`도 `term` 필터도 없다. 동일 강의명이 여러 학기에 존재하면 결과가 섞인다. 완화책으로 결과 표에 학기 컬럼을 반드시 노출한다. 정확한 강의 단위 필터가 필요하면 백엔드에 `lectureId`(또는 `term`) 파라미터 추가를 요청해야 한다 (미결).
+11. **기준정보(학과·학점환산기준)를 GNB 3번째 그룹으로 분리 배치한다.** 사용자가 요구한 두 메뉴 구조를 훼손하지 않으면서 합의된 범위를 담기 위한 배치다. 사용자가 다른 배치를 원하면 GNB 구성만 조정하면 되고 라우트는 그대로 쓸 수 있다.
+12. **학기 코드 클라이언트 검증 규칙을 `YY10 | YY11 | YY20 | YY21` 4자리로 정했다.** OpenAPI 설명문에서 유도한 규칙이며 서버가 정규식으로 강제하는지는 확인하지 못했다. 검증이 서버와 어긋나면 클라이언트 검증을 완화한다.
+13. **로그인 응답의 `user`를 최종 진실로 쓰지 않는다.** GNB 표시는 `GET /users/me`(`User`, `name` non-null)를 기준으로 한다. `LoginUserDto.name`은 nullable이라 표시 안정성이 낮다.
+14. **에러 응답 본문 형식을 확정하지 못했다.** NestJS 기본값(`{ statusCode, message, error }`)일 가능성이 높다고 보고, fetch 래퍼는 `message`가 문자열이면 그대로, 배열이면 첫 항목을, 없으면 스펙의 기본 문구를 쓴다.
+15. **CORS 설정을 확인하지 못했다.** 브라우저 직접 호출이 CORS로 막히면 Next.js `rewrites` 또는 route handler 프록시로 우회한다. 이는 구현 시 최초로 확인할 항목이다.
+16. **HTTP(비 HTTPS) 백엔드다.** 프론트를 HTTPS로 배포하면 mixed content로 차단된다. 개발·시연은 HTTP 로컬(`localhost`)을 전제한다.
+17. **`GET /users/me`는 인증 레이아웃 마운트당 1회만 호출한다.** 매 라우트 전환마다 호출하지 않는다.
+18. **삭제는 전부 소프트 삭제이며 UI에 복구 수단을 두지 않는다.** 목록 API가 삭제 항목을 제외해 반환한다고 가정한다 (`deletedAt`이 응답에 있으나 필터링 책임은 서버로 본다). 삭제 항목이 목록에 그대로 나오면 클라이언트에서 `deletedAt !== null`을 걸러낸다.
+
+### 2026-08-01 확장 분석 라운드에서 추가한 가정
+
+19. **이번 라운드는 필터 UI를 만들지 않는다** (「2.1」). 8개 엔드포인트를 전체 기준으로만 호출한다. 사용자가 "학기별로 보고 싶다"고 요구하면 다음 라운드에서 공통 필터 바 하나로 도입하며, 그때도 응답 스키마와 섹션 구조는 바뀌지 않는다. **다만 사용자가 이번 라운드에 이미 필터를 기대하고 있었다면 이 결정을 뒤집어야 하므로, 사용자 검토 1순위 항목이다.**
+20. **`/dashboard` 한 페이지에 섹션 11개(요약 KPI + 등급분포 + 확장 8 + 기존 통계 3블록)가 세로로 이어지는 긴 문서 구조를 허용한다.** 탭·아코디언으로 나누지 않는다. 근거: 탭은 상태(어느 탭이 열렸나)와 딥링크 규칙을 새로 정해야 하고, 사용자가 요구한 것은 "내용 추가"였다. 실제로 너무 길다는 판단이 서면 그건 `ui-ux-designer`가 앵커 목차/섹션 그룹화로 완화한다.
+21. **9개 요청을 동시에 발사한다.** HTTP/1.1에서는 호스트당 동시 연결 한도(통상 6)로 3건 정도가 대기열에 들어간다. 백엔드가 HTTP/2를 지원하는지 확인하지 못했다. 대기열이 체감될 정도로 느리면 그때 우선순위(상단 섹션 먼저)를 도입하고, **선제적으로 직렬화하지는 않는다.**
+22. **집계 API의 응답 시간을 측정하지 못했다.** 교차표(`department-lecture-matrix`)와 랭킹은 데이터가 커지면 느려질 수 있다. 느린 섹션이 생겨도 섹션 단위 격리 덕분에 다른 섹션은 막히지 않는다. 캐싱(요청 결과 재사용)은 이번 범위에 넣지 않았다 — 대시보드는 진입할 때마다 최신값을 보는 화면으로 본다.
+23. **`totalScoreMax`가 100이 아닐 수 있다고 보고, 백분율의 분모로 항상 응답값을 쓴다.** 서버 설정 키(`DASHBOARD_TOTAL_SCORE_MAX`)가 존재한다는 것만 확인했고 실제 운영값은 확인하지 못했다. `MAX_SCORE` 상수(100)는 기존 화면에서만 계속 쓴다.
+24. **`stddevTotalScore`/`medianTotalScore`의 `null`은 "0"이 아니라 "계산 불가"로 표시한다.** OpenAPI 설명이 "1건 이하이면 정의할 수 없으므로 null (0이 아니다)"라고 못 박고 있다. 이를 0으로 표시하면 "편차가 전혀 없는 균일한 학과"라는 정반대 의미가 된다.
+25. **`riskReasons`·`label`·`difficultyOutlier` 같은 서버 생성 문자열을 클라이언트가 다시 쓰지 않는다.** `riskReasons`("F학점 2개")와 히스토그램 `label`("90 ~ 100")은 이미 한국어 표시용이다. 예외는 `difficultyOutlier`뿐이다 — `"EASY"`/`"HARD"` 원문은 사용자에게 보여줄 수 없으므로 "평균 대비 쉬움/어려움"으로 매핑한다.
+26. **위험군 `limit`을 20으로 정한 것은 화면 분량 판단이다.** 서버 기본값 50을 그대로 쓰면 대시보드 한 섹션이 50행짜리 명단이 된다. 응답에 총원 필드가 없어 "N명 중 20명"을 표시할 수 없다는 한계는 문구로 정직하게 처리한다(「3.7 (8)」). 담당자가 전체 명단을 원하면 별도 화면이 필요하다(후속).
+27. **`lecture-difficulty`의 `minStudentCount`를 1(기본)로 두어 수강생 1~2명인 강의도 표에 나온다.** 통계적으로 불안정한 행이 섞이지만, 임의로 감추면 "왜 이 강의가 없지"라는 설명 불가능한 누락이 생긴다. 인원수 컬럼을 노출해 사용자가 판단하게 한다.
+28. **`student-ranking`의 `minLectureCount`도 1(기본)이다.** 1과목만 수강한 학생이 1위가 될 수 있다. 수강 강의 수(`lectureCount`) 컬럼을 반드시 노출해 이 왜곡을 사용자가 알아볼 수 있게 한다.
+29. **위험군·랭킹의 집계 단위가 학번이라는 백엔드 한계를 화면에 각주로 노출한다.** 학생 마스터 테이블이 없어 이름·학과가 성적 레코드의 최빈값이다. 동명이인·학과 변경 이력은 이 방식으로 정확히 표현되지 않는다.
+30. **기존 `summary` 기반 통계 3블록을 삭제하지 않고 유지한다** (「4.4」 주석). 새 8종에 정보가 완전히 포섭되지만, 이미 노출 중인 것을 없애는 결정은 사용자 확인이 필요하다.
+31. **확장 분석 8종을 대시보드 진입 시 무조건 호출한다.** 스크롤로 섹션이 뷰포트에 들어올 때 지연 로딩(lazy)하지 않는다. 근거: 지연 로딩은 관찰자(IntersectionObserver) 도입과 "스크롤을 빨리 내리면 스켈레톤이 줄줄이 보이는" 경험을 낳는다. 요청 수가 문제가 되면 그때 하단 섹션부터 지연을 검토한다.
+
+### 미결 사항 (구현 전 확인 필요)
+
+- [ ] 로그인 테스트 계정(`loginId`/`password`) — 계정이 DB에 직접 등록된다고 하므로 실제 값이 필요하다. 없으면 로그인 이후 전 화면을 검증할 수 없다.
+- [ ] CORS 허용 여부 (가정 15)
+- [ ] JWT 만료 시간 (가정 4·5)
+- [ ] 엑셀 샘플 파일 — 컬럼 순서는 알지만 헤더 행이 있는지, 학과는 코드인지 이름인지 확인되지 않았다. 업로드 안내 문구의 정확도에 영향을 준다.
+- [ ] 서버 업로드 용량 제한 (가정 8)
+- [ ] `deletedAt`이 목록 응답에 포함되는지 (가정 18)
+- [ ] `GET /lectures` 등의 데이터 규모 — 클라이언트 처리 방식의 유효 범위 (가정 9)
+
+#### 2026-08-01 확장 분석 라운드의 미결 사항
+
+- [ ] **필터 UI를 이번 라운드에 원했는가** (가정 19 / 「2.1」). "아니오"면 현 스펙 그대로 진행. "예"면 공통 필터 바 1벌 + 필터 선택지의 데이터 소스(학기 목록 API 부재 문제)를 먼저 정해야 하며 별도 라운드가 된다.
+- [ ] **기존 통계 3블록(학과별/강의별/학기별)을 삭제할 것인가** (가정 30). 새 8종에 정보가 완전히 포섭되어 중복이다. 삭제하면 화면이 짧아지고 "같은 지표가 두 군데서 미묘하게 다르게 보이는" 혼란이 사라진다.
+- [ ] **`term-trend`의 `breakdown=department`(학과별 시계열)를 볼 필요가 있는가.** 필요하면 다중 시리즈 차트가 되고 시각 설계 비용이 크게 늘어난다.
+- [ ] **위험군 명단의 표시 인원(`limit=20`)이 적절한가** (가정 26). 실제 운영 데이터에서 위험군이 100명 규모면 대시보드 섹션이 아니라 전용 화면이 필요하다.
+- [ ] **`DASHBOARD_TOTAL_SCORE_MAX`의 실제 운영값** (가정 23). 100이 아니면 기존 화면(`MAX_SCORE` 상수 사용)과 새 섹션(`totalScoreMax` 사용)의 기준이 어긋나 보일 수 있다.
+- [ ] **집계 API 9개 동시 호출 시의 실제 응답 시간과 백엔드 부하** (가정 21·22). 느리면 상단 섹션 우선 로딩 또는 하단 섹션 지연 로딩(가정 31)을 재검토한다.
+- [ ] **개인 식별 정보(학번·이름) 명단을 대시보드 첫 화면에 노출해도 되는지** — 랭킹·위험군 두 섹션이 해당한다. 조직 정책상 제한이 있으면 섹션을 접힌 상태로 두거나 별도 화면으로 옮겨야 한다.
+- [ ] **강의 수 × 학과 수가 커졌을 때 `department-lecture-matrix`의 표 폭.** 실제 데이터 규모를 확인하지 못했다. 열이 20개를 넘어가면 표가 아닌 다른 표현이 필요할 수 있다(`ui-ux-designer` 판단).

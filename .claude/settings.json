@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mkdir -p \"$CLAUDE_PROJECT_DIR/REQ/req_history\" && jq -r '\"\\n## \" + (now|strflocaltime(\"%Y-%m-%d %H:%M:%S\")) + \"\\n\\n\" + .prompt + \"\\n\"' >> \"$CLAUDE_PROJECT_DIR/REQ/req_history/$(date +%Y-%m).md\" 2>/dev/null; exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}
