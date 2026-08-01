@@ -12,7 +12,7 @@ import { clearAccessToken, getAccessToken } from "@/lib/cookies";
  * 중앙 fetch 래퍼 (spec.md 4.3 결정 3).
  *
  * 모든 API 호출이 이 파일 하나를 거친다. 여기서만 처리하는 것:
- * 1) Base URL 결합 — 환경변수 NEXT_PUBLIC_API_BASE_URL (기본 http://58.239.220.254:3330).
+ * 1) Base URL 결합 — 환경변수 NEXT_PUBLIC_API_BASE_URL (기본 `/backend-proxy`).
  *    실제 엔드포인트에는 `/api` 접두어가 없다. 절대 붙이지 않는다.
  * 2) Authorization: Bearer <token> 자동 첨부
  * 3) 401 단일 처리 — 토큰 삭제 + 로그인 화면 이동(중복 리다이렉트 억제)
@@ -20,9 +20,18 @@ import { clearAccessToken, getAccessToken } from "@/lib/cookies";
  * 5) 네트워크 실패/에러 응답을 ApiError 로 정규화
  */
 
-/** API Base URL. 끝의 슬래시를 제거해 경로 결합 시 `//` 가 생기지 않게 한다. */
+/**
+ * API Base URL. 끝의 슬래시를 제거해 경로 결합 시 `//` 가 생기지 않게 한다.
+ *
+ * 기본값을 백엔드 주소가 아니라 `/backend-proxy`(next.config.mjs 의 rewrites)로 둔다.
+ * 백엔드는 CORS 가 없고(OPTIONS 프리플라이트 404 확인됨) HTTP 이므로, HTTPS 로 배포되는
+ * 환경(Vercel 등)에서 브라우저가 직접 호출을 CORS 차단 + mixed content 차단 이중으로 막는다.
+ * `.env.local.example` 은 이 프록시 경로를 기본값으로 안내하지만, 배포 환경에는
+ * `.env.local` 파일 자체가 올라가지 않으므로(.gitignore) 환경변수를 따로 설정하지 않으면
+ * 이 fallback 값이 그대로 쓰인다 — 그래서 fallback 도 프록시를 가리켜야 한다.
+ */
 const API_BASE_URL = (
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://58.239.220.254:3330"
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "/backend-proxy"
 ).replace(/\/+$/, "");
 
 /**
