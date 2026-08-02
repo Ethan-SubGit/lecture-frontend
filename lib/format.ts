@@ -89,6 +89,61 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (KILO * KILO)).toFixed(1)} MB`;
 }
 
+/** 이름을 가리는 문자. 반각 별표 1글자로 고정한다(전각 ＊를 쓰지 않는다). */
+export const NAME_MASK_CHAR = "*";
+
+/**
+ * 마스킹 기본 위치 — "두 번째 글자"(0-based index 1).
+ * 이름 길이와 무관하게 이 위치로 고정한다 (spec.md 5.6 (다) / 가정 38).
+ * 복성(`남궁민수`)을 판별하려면 성씨 사전이 필요하고, 사전에 없는 성이 틀리게 처리된다.
+ * 규칙이 하나여야 사용자가 "어느 글자가 가려졌는지" 예측할 수 있다.
+ */
+const NAME_MASK_INDEX = 1;
+
+/**
+ * 학생 이름의 한 글자를 `*`로 가린다 (spec.md 5.6).
+ *
+ * **렌더 직전의 표시 변환 전용이다.** 검색·정렬 파라미터와 엑셀 내보내기에는
+ * 원본 이름을 그대로 쓴다 — 데이터 계층에서 가리면 다운로드와 검색이 동시에 깨진다.
+ *
+ * 규칙:
+ * - 앞뒤 공백을 제거한 뒤 적용한다.
+ * - **코드 포인트 단위**로 센다. UTF-16 코드 유닛 인덱싱(`name[1]`)을 쓰면
+ *   상용구 밖 한자(SIP 평면)나 이모지가 반 토막 나 깨진 문자(U+FFFD)가 출력된다.
+ *   이름은 엑셀 업로드로 들어온 자유 문자열이라 무엇이든 올 수 있다.
+ * - 예외 A: 1글자 이름은 그 한 글자를 가린다(가장 짧은 이름이야말로 가려야 한다).
+ * - 예외 B: 가릴 자리가 공백이면 오른쪽으로 이동해 첫 비공백 문자를 가린다.
+ *   공백을 `*`로 바꾸면 원래 없던 글자가 생긴 것처럼 보인다.
+ * - 가리는 글자 수는 항상 정확히 1개이고 `*` 1개로 치환하므로 **글자 수가 보존된다**
+ *   (표의 열 폭이 마스킹 전후로 변하지 않는다).
+ *
+ * @param name 원본 이름. null/undefined 허용
+ * @returns 마스킹된 이름. 값이 없거나 공백뿐이면 EMPTY_VALUE_PLACEHOLDER("—")
+ */
+export function maskStudentName(name: string | null | undefined): string {
+  if (!name) return EMPTY_VALUE_PLACEHOLDER;
+
+  const trimmed = name.trim();
+  if (trimmed === "") return EMPTY_VALUE_PLACEHOLDER;
+
+  // 코드 포인트 배열로 다룬다. 서로게이트 페어를 한 글자로 취급하기 위한 유일한 방법이다.
+  const characters = Array.from(trimmed);
+
+  // 예외 A — 1글자 이름은 index 1 이 존재하지 않으므로 유일한 글자(index 0)를 가린다.
+  let targetIndex = characters.length === 1 ? 0 : NAME_MASK_INDEX;
+
+  // 예외 B — 공백은 절대 마스킹 대상이 아니다. 오른쪽으로 첫 비공백 문자를 찾는다.
+  while (targetIndex < characters.length && characters[targetIndex].trim() === "") {
+    targetIndex += 1;
+  }
+
+  // 오른쪽에 비공백이 없으면(트림했으므로 실제로는 도달하지 않는다) 가리지 않고 원문을 돌려준다.
+  if (targetIndex >= characters.length) return trimmed;
+
+  characters[targetIndex] = NAME_MASK_CHAR;
+  return characters.join("");
+}
+
 /**
  * 학기 코드 뒷 2자리 → 학기 라벨.
  * `formatTerm`(표·캡션용)과 `formatTermShort`(차트 축용)가 **같은 상수 하나**를 공유한다.

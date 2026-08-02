@@ -232,3 +232,21 @@ export function FilterOffIcon({ className }: IconProps) {
     </IconBase>
   );
 }
+
+/**
+ * 아래 화살표 + 받침 트레이 — `/scores` 툴바 [엑셀 다운로드] 버튼 (design.md 4.34).
+ *
+ * "엑셀"을 표현하는 스프레드시트/문서 글리프를 그리지 않는다 —
+ * 파일 형식은 라벨(`엑셀 다운로드`)이 이미 말하고, 표 모양 격자는 16px 에서 뭉개져
+ * 무엇인지 알 수 없다. **동작(내려받기)을 그리는 편이 언제나 더 잘 읽힌다.**
+ * 사용 크기는 `h-4 w-4` — 기본 `h-5 w-5` 는 36px 버튼 안에서 과하게 커 보인다.
+ */
+export function DownloadIcon({ className }: IconProps) {
+  return (
+    <IconBase className={className}>
+      <path d="M12 3v12" />
+      <path d="m7 11 5 5 5-5" />
+      <path d="M4 17v3h16v-3" />
+    </IconBase>
+  );
+}

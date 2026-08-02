@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/Badge";
 import { BookIcon, StarIcon, TrophyIcon } from "@/components/ui/icons";
 import { DataTable, type Column } from "@/components/data/DataTable";
-import { formatCount, formatNumber } from "@/lib/format";
+import { EMPTY_VALUE_PLACEHOLDER, formatCount, formatNumber, maskStudentName } from "@/lib/format";
 import type { AsyncDataState } from "@/hooks/useAsyncData";
 import type { StudentRankingItemDto, StudentRankingResponseDto } from "@/types/api";
 import { DashboardSection, deriveSectionState } from "./DashboardSection";
@@ -35,15 +35,25 @@ const COLUMNS: Column<StudentRankingItemDto>[] = [
     key: "student",
     header: "학생",
     mobilePriority: "title",
-    cell: (row) => (
-      <div className="flex items-center gap-2">
-        <InitialAvatar name={row.studentName} />
-        <div className="min-w-0">
-          <p className="truncate text-body-sm font-medium text-primary">{row.studentName}</p>
-          <p className="text-caption tabular-nums text-muted">{row.studentNumber}</p>
+    /* 이 섹션은 로그인 직후 착지 화면이라 노출 위험이 `/scores` 보다 오히려 높다(spec.md 2.2 (나)).
+       행의 식별자는 이름이 아니라 **학번**이므로 이름을 가려도 "누구인지 특정해 행동한다"는
+       섹션의 목적은 그대로 달성된다(design.md 6.7.6). */
+    cell: (row) => {
+      const maskedName = maskStudentName(row.studentName);
+      // 값이 없으면 `—` 의 첫 글자를 칩에 그리지 않는다. 빈 값은 InitialAvatar 가 null 을 반환한다.
+      const avatarName = maskedName === EMPTY_VALUE_PLACEHOLDER ? "" : maskedName;
+
+      return (
+        <div className="flex items-center gap-2">
+          {/* 칩은 마스킹된 이름의 첫 글자다 — index 0 은 마스킹 대상이 아니라 결과가 원본과 같다. */}
+          <InitialAvatar name={avatarName} />
+          <div className="min-w-0">
+            <p className="truncate text-body-sm font-medium text-primary">{maskedName}</p>
+            <p className="text-caption tabular-nums text-muted">{row.studentNumber}</p>
+          </div>
         </div>
-      </div>
-    ),
+      );
+    },
   },
   {
     key: "departmentName",
@@ -88,6 +98,11 @@ function buildStatItems(items: StudentRankingItemDto[]): SectionStatItem[] {
   const top = items[0];
   const maxLectureCount = Math.max(...items.map((item) => item.lectureCount));
 
+  /* 배지는 **학번 없이 이름만 보이는 유일한 지점**이었다 — 마스킹으로 그 단독 실명이 사라진다.
+     학번을 덧붙이지 않는다: 배지에 나온 사람은 바로 아래 표에 반드시 있고(랭킹 1위),
+     칩이 길어지면 스트립 3칩 레이아웃이 모바일에서 무너진다(design.md 4.32.4). */
+  const maskedTopName = maskStudentName(top.studentName);
+
   return [
     {
       key: "size",
@@ -101,7 +116,11 @@ function buildStatItems(items: StudentRankingItemDto[]): SectionStatItem[] {
       icon: <StarIcon className="h-4 w-4" />,
       label: "최고 평균 평점",
       value: formatNumber(top.averageGpa, 2),
-      badge: <Badge tone="neutral">{top.studentName}</Badge>,
+      // `—` 만 든 배지는 "데이터 오류"로 읽히므로 배지 자리를 통째로 없앤다.
+      badge:
+        maskedTopName === EMPTY_VALUE_PLACEHOLDER ? undefined : (
+          <Badge tone="neutral">{maskedTopName}</Badge>
+        ),
       tone: "success",
     },
     {
@@ -146,7 +165,9 @@ export function StudentRankingSection({ query }: StudentRankingSectionProps) {
         "동점자는 같은 순위이며 다음 순위는 건너뜁니다.",
         "이름·학과는 성적 데이터 기준의 대표값이며 학적상 소속을 보증하지 않습니다.",
         "1과목만 수강한 학생도 포함됩니다. 수강 강의 수 열을 함께 보세요.",
-        "학번·이름이 포함된 명단입니다. 화면 공유·캡처에 주의하세요.",
+        // 각주 개수를 늘리지 않는다 — 마스킹은 이 경고가 말하던 위험에 대한 조치이므로
+        // 같은 문장 안에 넣는 것이 의미상으로도 맞다(design.md 4.32.2 #4).
+        "학번·이름이 포함된 명단입니다. 이름은 일부를 *로 가려 표시하며, 화면 공유·캡처에 주의하세요.",
       ]}
     >
       {items.length > 0 ? (

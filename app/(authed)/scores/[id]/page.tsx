@@ -15,7 +15,13 @@ import { RecordNotFound } from "@/components/feedback/RecordNotFound";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import { ApiError } from "@/lib/api/client";
 import { fetchStudentScore } from "@/lib/api/endpoints";
-import { formatNumber, formatTerm } from "@/lib/format";
+import {
+  EMPTY_VALUE_PLACEHOLDER,
+  formatNumber,
+  formatTerm,
+  maskStudentName,
+  NAME_MASK_CHAR,
+} from "@/lib/format";
 import { NETWORK_ERROR_MESSAGE } from "@/lib/constants";
 import type { StudentScore } from "@/types/api";
 
@@ -76,6 +82,12 @@ interface ScoreDetailContentProps {
  * @returns 요약 · 점수 · 합계 블록
  */
 function ScoreDetailContent({ score }: ScoreDetailContentProps) {
+  /* 상세라고 해서 실명을 보여주지 않는다 — 상세야말로 한 사람을 확대해 보는 화면이다.
+     대체 문자를 문자열로 그냥 넘기면 DescriptionList 가 "값 있음"으로 보고
+     sr-only "값 없음" 안내를 붙이지 않으므로, 여기서 null 로 정규화한다(design.md 4.32.1-a). */
+  const maskedName = maskStudentName(score.studentName);
+  const nameValue = maskedName === EMPTY_VALUE_PLACEHOLDER ? null : maskedName;
+
   /** 항목별 점수 4개. 반복 마크업을 배열로 돌린다. */
   const itemScores = [
     { label: "중간고사", value: score.midtermExamScore },
@@ -91,7 +103,7 @@ function ScoreDetailContent({ score }: ScoreDetailContentProps) {
         <DescriptionList
           items={[
             { label: "학번", value: score.studentNumber },
-            { label: "이름", value: score.studentName },
+            { label: "이름", value: nameValue },
             { label: "학과", value: score.department?.name },
             {
               label: "강의",
@@ -107,6 +119,13 @@ function ScoreDetailContent({ score }: ScoreDetailContentProps) {
             { label: "학기", value: formatTerm(score.lecture?.term) },
           ]}
         />
+
+        {/* 각주는 `/scores` 의 **절반 길이**다 — 이 화면에는 검색도 정렬도 없으므로
+            없는 기능을 설명하면 "여기서도 검색이 되나?" 하는 오해가 생긴다(design.md 4.32.2 #3). */}
+        <p className="mt-4 flex gap-1.5 border-t border-subtle pt-3 text-caption text-muted">
+          <span aria-hidden="true">※</span>
+          학생 이름은 일부를 {NAME_MASK_CHAR}로 가려 표시합니다.
+        </p>
       </Card>
 
       <Card>

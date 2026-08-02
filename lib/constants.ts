@@ -53,6 +53,18 @@ export const STUDENT_RANKING_LIMIT = 10;
 /** 위험군은 서버 기본 50이 대시보드 한 섹션에 붙이기엔 너무 길어 20으로 줄인다 (spec.md 가정 26). */
 export const AT_RISK_STUDENTS_LIMIT = 20;
 
+/**
+ * 성적 엑셀 다운로드 전 확인 모달을 띄우는 건수 임계값 (spec.md 5.8 (다)).
+ *
+ * **측정값이 아니라 판단값이다** — "한 강의 수강생"으로는 비정상적으로 크고
+ * "전교 성적 대장"으로는 있을 수 있는 규모라는 기준에서 정했다.
+ * 하드 상한은 두지 않는다("전체를 받고 싶다"는 요구를 정면으로 거스르기 때문).
+ */
+export const EXCEL_EXPORT_CONFIRM_THRESHOLD = 5000;
+
+/** 내보낼 성적 엑셀의 시트 이름 (spec.md 5.7 (나)). */
+export const EXCEL_EXPORT_SHEET_NAME = "성적목록";
+
 /** 공통 에러 문구 (spec.md 6절). */
 export const NETWORK_ERROR_MESSAGE =
   "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.";

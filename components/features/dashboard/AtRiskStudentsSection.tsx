@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/Badge";
 import { AlertTriangleIcon, ShieldCheckIcon, TargetIcon } from "@/components/ui/icons";
 import { AlertBanner } from "@/components/feedback/AlertBanner";
 import { DataTable, type Column } from "@/components/data/DataTable";
-import { formatCount, formatNumber } from "@/lib/format";
+import { EMPTY_VALUE_PLACEHOLDER, formatCount, formatNumber, maskStudentName } from "@/lib/format";
 import { AT_RISK_STUDENTS_LIMIT } from "@/lib/constants";
 import type { AsyncDataState } from "@/hooks/useAsyncData";
 import type { AtRiskStudentItemDto, AtRiskStudentsResponseDto } from "@/types/api";
@@ -36,15 +36,23 @@ function buildColumns(averageBelow: number): Column<AtRiskStudentItemDto>[] {
       key: "student",
       header: "학생",
       mobilePriority: "title",
-      cell: (row) => (
-        <div className="flex items-center gap-2">
-          <InitialAvatar name={row.studentName} tone="danger" />
-          <div className="min-w-0">
-            <p className="truncate text-body-sm font-medium text-primary">{row.studentName}</p>
-            <p className="text-caption tabular-nums text-muted">{row.studentNumber}</p>
+      /* 랭킹 섹션과 동일한 규약이다(design.md 4.32 / 6.7.6).
+         학번은 그대로 남으므로 담당자가 명단을 보고 행동하는 데 지장이 없다. */
+      cell: (row) => {
+        const maskedName = maskStudentName(row.studentName);
+        // 값이 없으면 `—` 의 첫 글자를 칩에 그리지 않는다(InitialAvatar 가 빈 값이면 null).
+        const avatarName = maskedName === EMPTY_VALUE_PLACEHOLDER ? "" : maskedName;
+
+        return (
+          <div className="flex items-center gap-2">
+            <InitialAvatar name={avatarName} tone="danger" />
+            <div className="min-w-0">
+              <p className="truncate text-body-sm font-medium text-primary">{maskedName}</p>
+              <p className="text-caption tabular-nums text-muted">{row.studentNumber}</p>
+            </div>
           </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       // failCount === 0 인 학생은 성취도 기준으로만 걸린 경우다. F학점 배지를 붙이면 거짓이 된다.
@@ -127,6 +135,12 @@ function buildStatItems(data: AtRiskStudentsResponseDto): SectionStatItem[] {
   const maxFailCount = Math.max(...data.items.map((item) => item.failCount));
   const topFailStudent = data.items.find((item) => item.failCount === maxFailCount);
 
+  /* 「F학점 최다」 배지는 학번 없이 이름만 보이는 지점이다. 마스킹하되 학번을 덧붙이지 않는다 —
+     같은 학생이 바로 아래 표(학번 포함)에 반드시 있다(design.md 4.32.4). */
+  const maskedTopFailName = topFailStudent
+    ? maskStudentName(topFailStudent.studentName)
+    : EMPTY_VALUE_PLACEHOLDER;
+
   return [
     {
       key: "size",
@@ -150,7 +164,11 @@ function buildStatItems(data: AtRiskStudentsResponseDto): SectionStatItem[] {
       icon: <AlertTriangleIcon className="h-4 w-4" />,
       label: "F학점 최다",
       value: `${formatCount(maxFailCount)}개`,
-      badge: topFailStudent ? <Badge tone="neutral">{topFailStudent.studentName}</Badge> : undefined,
+      // 이름이 빈 값이면 `—` 만 든 배지 대신 배지 자리를 통째로 없앤다.
+      badge:
+        maskedTopFailName === EMPTY_VALUE_PLACEHOLDER ? undefined : (
+          <Badge tone="neutral">{maskedTopFailName}</Badge>
+        ),
       tone: "danger",
     },
   ];
@@ -201,7 +219,8 @@ export function AtRiskStudentsSection({ query }: AtRiskStudentsSectionProps) {
       footnotes={[
         "두 조건은 OR입니다. 하나만 해당해도 명단에 포함됩니다.",
         "이름·학과는 성적 데이터 기준의 대표값이며 학적상 소속을 보증하지 않습니다.",
-        "학번·이름이 포함된 개인 명단입니다. 화면 공유·캡처에 주의하세요.",
+        // 각주 개수를 늘리지 않고 기존 PII 각주 문장만 갱신한다(design.md 4.32.2 #4).
+        "학번·이름이 포함된 개인 명단입니다. 이름은 일부를 *로 가려 표시하며, 화면 공유·캡처에 주의하세요.",
       ]}
     >
       {data && data.items.length > 0 ? (
